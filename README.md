@@ -1,4 +1,4 @@
-# AgentOS Railway Template
+# AgentOS Starter Template
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/agentos)
 
@@ -8,15 +8,18 @@ Deploy a multi-agent system on Railway.
 
 | Agent | Pattern | Description |
 |-------|---------|-------------|
-| Knowledge Agent | Agentic RAG | Answers questions from a knowledge base. |
-| MCP Agent | MCP Tool Use | Connects to external services via MCP. |
+| Search Agent | Context Provider (agent mode) | Web search via `query_web` |
+| Research Agent | Context Provider (tools mode) | Web search via `web_search`, `web_fetch` |
+| Codebase Agent | Context Provider (tools mode) | Codebase Q&A via `list_files`, `search_content`, `read_file` |
 
 ## Get Started
 
+> **Prerequisite:** Docker Desktop installed and running.
+
 ```sh
 # Clone the repo
-git clone https://github.com/agno-agi/agentos-railway-template.git agentos-railway
-cd agentos-railway
+git clone https://github.com/agno-agi/agentos-railway-template.git starter
+cd starter
 
 # Add OPENAI_API_KEY
 cp example.env .env
@@ -24,14 +27,11 @@ cp example.env .env
 
 # Start the application
 docker compose up -d --build
-
-# Load documents for the knowledge agent
-docker exec -it agentos-api python -m agents.knowledge_agent
 ```
 
 Confirm AgentOS is running at [http://localhost:8000/docs](http://localhost:8000/docs).
 
-### Connect to the Web UI
+### Connect to AgentOS
 
 1. Open [os.agno.com](https://os.agno.com) and login
 2. Add OS → Local → `http://localhost:8000`
@@ -39,79 +39,93 @@ Confirm AgentOS is running at [http://localhost:8000/docs](http://localhost:8000
 
 ## Deploy to Railway
 
-### One-Click Deploy
-
-Click the deploy button at the top of this page, or go to [railway.com/new/template/agentos](https://railway.com/new/template/agentos).
-
-You'll need to provide your `OPENAI_API_KEY`. The template automatically provisions PostgreSQL with pgvector.
-
-### CLI Deploy (Advanced)
-
-For more control, use the Railway CLI:
+Requires:
+- [Railway CLI](https://docs.railway.com/guides/cli)
+- `OPENAI_API_KEY` set in your environment
 
 ```sh
 railway login
+
 ./scripts/railway_up.sh
 ```
 
-This provisions the database, configures environment variables, and deploys your application.
+The script provisions PostgreSQL, configures environment variables, and deploys your application.
 
-### Connect to the Web UI
+### Connect production to AgentOS
 
 1. Open [os.agno.com](https://os.agno.com)
 2. Click "Add OS" → "Live"
 3. Enter your Railway domain
 
-### Manage deployment
+### Enable JWT authorization (recommended)
 
-Use the `SERVICE_NAME` from your `railway.config`.
+Production endpoints should require authorization. To enable:
+
+1. In AgentOS, enable **Token Based Authorization** for your OS
+2. Copy the public key and add to your env:
 
 ```sh
-railway logs --service <SERVICE_NAME>  # View logs
-railway open                           # Open dashboard
-./scripts/railway_redeploy.sh          # Re-deploy after code changes
+JWT_VERIFICATION_KEY=-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkq...
+-----END PUBLIC KEY-----
+```
+
+3. Sync and redeploy:
+
+```sh
+./scripts/railway_env.sh
+./scripts/railway_redeploy.sh
+```
+
+See [AgentOS Security docs](https://docs.agno.com/agent-os/security/overview) for details.
+
+### Manage deployment
+
+```sh
+railway logs --service agent-os      # View logs
+railway open                         # Open dashboard
+railway up --service agent-os -d     # Update after changes
 ```
 
 To stop services:
 ```sh
-railway down --service <SERVICE_NAME>
+railway down --service agent-os
 railway down --service pgvector
 ```
 
 ## The Agents
 
-### Knowledge Agent
+### Search Agent
 
-Answers questions using hybrid search over a vector database (Agentic RAG).
-
-**Load documents:**
-
-```sh
-# Local
-docker exec -it agentos-api python -m agents.knowledge_agent
-
-# Railway
-railway run python -m agents.knowledge_agent
-```
+Web search using a context provider in **agent mode**. The provider wraps tools behind a sub-agent — your agent sees one `query_web` tool.
 
 **Try it:**
 
 ```
-What is Agno?
-How do I create my first agent?
-What documents are in your knowledge base?
+What are the latest developments in AI agents?
+Search for recent OpenAI news
 ```
 
-### MCP Agent
+### Research Agent
 
-Connects to external tools via the Model Context Protocol.
+Web research using a context provider in **tools mode**. Tools are flattened directly onto the agent: `web_search` and `web_fetch`.
 
 **Try it:**
 
 ```
-What tools do you have access to?
-Search the docs for how to use LearningMachine
-Find examples of agents with memory
+Search for Anthropic's latest research
+Find and summarize the top 3 results about LLM agents
+```
+
+### Codebase Agent
+
+Answers questions about this repository using `WorkspaceContextProvider`.
+
+**Try it:**
+
+```
+What agents are available in this project?
+How does the database connection work?
 ```
 
 ## Common Tasks
@@ -128,7 +142,7 @@ from db import get_postgres_db
 my_agent = Agent(
     id="my-agent",
     name="My Agent",
-    model=OpenAIResponses(id="gpt-5.2"),
+    model=OpenAIResponses(id="gpt-5.4"),
     db=get_postgres_db(),
     instructions="You are a helpful assistant.",
 )
@@ -141,12 +155,18 @@ from agents.my_agent import my_agent
 
 agent_os = AgentOS(
     name="AgentOS",
-    agents=[knowledge_agent, mcp_agent, my_agent],
+    agents=[search_agent, research_agent, codebase_agent, my_agent],
     ...
 )
 ```
 
 3. Restart: `docker compose restart`
+
+### Add context providers
+
+See [docs/MCP_CONNECT.md](docs/MCP_CONNECT.md) for connecting MCP servers.
+
+See [docs/SLACK_CONNECT.md](docs/SLACK_CONNECT.md) for Slack integration.
 
 ### Add tools to an agent
 
@@ -215,10 +235,7 @@ python -m app.main
 | `DB_USER` | No | `ai` | Database user |
 | `DB_PASS` | No | `ai` | Database password |
 | `DB_DATABASE` | No | `ai` | Database name |
-| `DB_DRIVER` | No | `postgresql+psycopg` | SQLAlchemy database driver |
 | `RUNTIME_ENV` | No | `prd` | Set to `dev` for auto-reload |
-| `WAIT_FOR_DB` | No | `False` | Wait for database before starting |
-| `AGNO_DEBUG` | No | `False` | Enable Agno debug logging |
 
 ## Learn More
 
