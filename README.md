@@ -1,7 +1,5 @@
 # AgentOS Railway Template
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/agentos)
-
 A unified agent platform you can run on Railway for ~$20/month. Two reference agents, Postgres-backed memory and knowledge, conditional Slack interface, and a Claude-Code-driven workflow for shipping and improving agents.
 
 The platform is built around five pieces:
@@ -40,7 +38,7 @@ The template ships with two reference agents:
 
 | Agent | Pattern | Tools |
 |---|---|---|
-| WebSearch Agent | Direct MCP tools | `web_search`, `web_fetch` (Parallel) |
+| WebSearch Agent | Direct tools (Parallel SDK or MCP) | `parallel_search` / `parallel_extract` with `PARALLEL_API_KEY`; `web_search` / `web_fetch` keyless |
 | CodeSearch Agent | Context provider (sub-agent) | `query_my_codebase` |
 
 These cover the two common shapes of supplying context to an agent — direct tools, and a single `query_<source>` tool backed by a sub-agent. Most agents you build will extend one of these.
@@ -51,7 +49,7 @@ These cover the two common shapes of supplying context to an agent — direct to
 Run docs/create-new-agent.md
 ```
 
-Claude asks what the agent should do, generates the file in `agents/`, registers it in `app/main.py`, adds prompts to `app/config.yaml`, and smoke-tests via cURL. Hot-reload picks up the new file in <2s. Usually 10-20 minutes for a simple agent.
+Claude asks what the agent should do, generates the file in `agents/`, registers it in `app/main.py`, adds prompts to `app/config.yaml`, and smoke-tests via cURL. Hot-reload picks up the new file in <2s. Usually 5-10 minutes for a simple agent.
 
 ## Step 3: Test your agent
 
@@ -169,6 +167,15 @@ MIIBIjANBgkq...
 
 ### 5.5 Sync env and verify
 
+While you have `.env.production` open, point the in-cluster scheduler at your public Railway domain so cron triggers can reach AgentOS:
+
+```sh
+# .env.production
+AGENTOS_URL=https://<your-app>.up.railway.app
+```
+
+Then push every variable to Railway:
+
 ```sh
 ./scripts/railway/env-sync.sh
 ```
@@ -181,7 +188,13 @@ railway logs --service agent-os
 
 Once you see successful requests, AgentOS will connect through your Railway domain and you're live.
 
-### 5.6 Auto-deploys from GitHub
+### 5.6 Redeploy after code changes
+
+For one-off updates from your machine:
+
+```sh
+./scripts/railway/redeploy.sh
+```
 
 To auto-deploy on every push to `main`:
 
@@ -189,7 +202,7 @@ To auto-deploy on every push to `main`:
 2. Under **Source**, click **Connect Repo** and pick your repo.
 3. Set the deploy branch to `main`, save.
 
-Push to `main` triggers a build + rolling deploy. `./scripts/railway/env-sync.sh` is still how you sync env changes.
+Push to `main` then triggers a build + rolling deploy. `./scripts/railway/env-sync.sh` is still how you sync env changes.
 
 ### Opting out of JWT (not recommended)
 
@@ -205,7 +218,7 @@ The default deploy is two replicas at 4Gi memory / 2 vCPU each (zero-downtime ro
 
 The team uses agents where work happens — Slack, Discord, Telegram, custom UIs in your product.
 
-**Slack** is pre-wired. Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET` in your env, and the interface lights up automatically. Full setup: [`docs/SLACK_CONNECT.md`](docs/SLACK_CONNECT.md).
+**Slack** is pre-wired. Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET` in your env, and the interface lights up automatically. See the [agno Slack interface docs](https://docs.agno.com/agent-os/interfaces/overview) for the Slack-side app setup.
 
 For Discord, Telegram, WhatsApp, or a custom UI, the pattern is the same — mirror the Slack conditional in `app/main.py` with the relevant interface from agno. See the [agno interfaces guide](https://docs.agno.com/agent-os/interfaces/overview).
 
@@ -213,7 +226,7 @@ When the same person reaches your agent across surfaces — Slack today, web tom
 
 ## Add tools and MCP servers
 
-See [`docs/MCP_CONNECT.md`](docs/MCP_CONNECT.md) for connecting any MCP server. For built-in toolkits (Slack tools, Gmail, GitHub, Linear, etc.), see [agno tools](https://docs.agno.com/tools/toolkits).
+The WebSearch agent in [`agents/web_search.py`](agents/web_search.py) shows the MCPTools pattern (URL + transport) — copy it to wire any MCP server. For built-in toolkits (Slack tools, Gmail, GitHub, Linear, etc.), see [agno tools](https://docs.agno.com/tools/toolkits).
 
 ---
 
@@ -234,31 +247,23 @@ The agents you ship today are the smallest part of what you've built. The platfo
 
 ---
 
-## Local development without Docker
-
-```sh
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-./scripts/venv_setup.sh
-source .venv/bin/activate
-
-docker compose up -d agentos-db
-python -m app.main
-```
-
 ## Environment variables
+
+`compose.yaml` sets the dev defaults (`RUNTIME_ENV=dev`, `AGNO_DEBUG=True`, `WAIT_FOR_DB=True`) so local Docker runs hot-reload and skips JWT. Production reads everything from `.env.production` via `./scripts/railway/env-sync.sh`.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `OPENAI_API_KEY` | yes | — | OpenAI key for models + embeddings. |
-| `RUNTIME_ENV` | no | `prd` | Set to `dev` for hot-reload + JWT off. |
+| `RUNTIME_ENV` | no | `prd` | `dev` enables hot-reload and disables JWT. Compose sets this to `dev` for local. |
 | `JWT_VERIFICATION_KEY` | prd | — | Public key from os.agno.com. Required when `RUNTIME_ENV=prd`. |
-| `AGENTOS_URL` | no | `http://127.0.0.1:8000` | Scheduler base URL. |
-| `PARALLEL_API_KEY` | no | — | Authenticates the WebSearch Agent's MCP connection. |
+| `AGENTOS_URL` | no | `http://127.0.0.1:8000` | Scheduler base URL. Set to your Railway domain in production. |
+| `PARALLEL_API_KEY` | no | — | Authenticates the WebSearch Agent's Parallel SDK / MCP connection. |
 | `SLACK_BOT_TOKEN` / `SLACK_SIGNING_SECRET` | no | — | Both must be set to enable the Slack interface. |
 | `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASS` / `DB_DATABASE` | no | matches compose | Postgres connection. |
 | `DB_DRIVER` | no | `postgresql+psycopg` | SQLAlchemy driver. |
 | `PORT` | no | `8000` | API server port. |
+| `AGNO_DEBUG` | no | `False` | If `True`, agno emits verbose debug logs. Compose sets this for dev. |
+| `WAIT_FOR_DB` | no | `False` | If `True`, the entrypoint blocks on the DB before starting. Compose sets this. |
 
 ## Learn more
 

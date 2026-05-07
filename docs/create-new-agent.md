@@ -149,7 +149,7 @@ Iterate at most 2-3 times on the prompt before stopping and surfacing the questi
 
 When the smoke test passes:
 
-1. Tell the user the agent's slug and the URL: `http://os.agno.com` (their already-connected OS) — they can chat with the new agent immediately.
+1. Tell the user the agent's slug and the URL: `https://os.agno.com` (their already-connected OS) — they can chat with the new agent immediately.
 2. Mention `docs/improve-agent.md` for the next-step iteration loop if behavior needs tuning.
 
-A simple agent usually takes 10-20 minutes from "Run docs/create-new-agent.md" to working. More if the user asks for custom tools or an MCP server with auth.
+A simple agent usually takes 5-10 minutes from "Run docs/create-new-agent.md" to working. More if the user asks for custom tools or an MCP server with auth.

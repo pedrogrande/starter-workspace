@@ -9,7 +9,7 @@ You're running the agent platform's eval suite, diagnosing every failure, fixing
 
 - Postgres up: `docker compose ps` shows `agentos-db`. If not, `docker compose up -d agentos-db`.
 - `OPENAI_API_KEY` exported (and `PARALLEL_API_KEY` if you have one — the runner pins the expected web-search tool name based on it).
-- Venv active: `source .venv/bin/activate`. The runner imports the agents from `app.main`.
+- Venv active: `source .venv/bin/activate`. `evals/cases.py` imports the agents directly from `agents/`, so no AgentOS server has to be running.
 
 If the user hasn't loaded their env into the shell, run:
 

@@ -1,7 +1,7 @@
 [project]
-name = "agentos-railway"
+name = "agent-platform"
 version = "1.0.0"
-description = "AgentOS template — multi-agent platform with Postgres, ready for Railway."
+description = "Agent platform with Postgres and AgentOS."
 requires-python = ">=3.12,<4"
 readme = "README.md"
 license-files = ["LICENSE"]

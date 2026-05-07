@@ -19,7 +19,7 @@ Shared:
 - `app.settings.default_model()` returns `OpenAIResponses(id="gpt-5.4")` — bump the model in one place.
 - Scheduler enabled by default (`scheduler=True`).
 - Slack interface lights up automatically when both `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET` are set.
-- JWT auth on whenever `RUNTIME_ENV != "dev"` (so production deploys are gated by default).
+- JWT auth on whenever `RUNTIME_ENV == "prd"` (so production deploys are gated by default).
 
 ## Key Files
 
@@ -39,7 +39,7 @@ Shared:
 
 ## Development Setup
 
-### Local with Docker (recommended)
+### Local with Docker
 
 ```bash
 cp example.env .env
@@ -48,29 +48,25 @@ cp example.env .env
 docker compose up -d --build
 ```
 
-Hot-reload watches `agents/`, `app/`, `db/`. Edits land in <2s.
+Hot-reload watches `agents/`, `app/`, `db/`. Edits land in <2s. `compose.yaml` sets `RUNTIME_ENV=dev`, `AGNO_DEBUG=True`, and `WAIT_FOR_DB=True` so JWT is off and the API blocks on the DB before serving.
 
-### Local without Docker
+### Format & Validate
+
+The format / validate / eval scripts run on the host, so they need a venv. Set one up once:
 
 ```bash
 ./scripts/venv_setup.sh
 source .venv/bin/activate
-
-docker compose up -d agentos-db
-python -m app.main
 ```
 
-### Format & Validate
-
-Both scripts assume an active venv:
+Then:
 
 ```bash
-source .venv/bin/activate
 ./scripts/format.sh     # ruff format + import sort
 ./scripts/validate.sh   # ruff check + mypy (runs both, summarizes)
 ```
 
-CI runs the same `scripts/validate.sh` — local and CI never drift.
+CI installs the same pinned `requirements.txt` and runs the same `scripts/validate.sh` — local and CI never drift.
 
 ## Conventions
 
@@ -132,11 +128,10 @@ Knowledge bases use PgVector with `SearchType.hybrid` and `text-embedding-3-smal
 
 ## Adding a new agent
 
-Three options:
+Two options:
 
 1. **Hand it to Claude Code** — paste `Run docs/create-new-agent.md` into a Claude Code session pointed at this repo. Claude asks the user what the agent should do, generates the file, registers it, smoke-tests it.
-2. **Hand it to a different harness** — `docs/create-new-agent.md` is harness-agnostic; the same prompt works in any agent harness that can read files and run shell commands.
-3. **Do it manually** — create `agents/<slug>.py`, register in `app/main.py`, add prompts to `app/config.yaml`. Hot-reload picks the new agent up automatically.
+2. **Do it manually** — create `agents/<slug>.py`, register in `app/main.py`, add prompts to `app/config.yaml`. Hot-reload picks the new agent up automatically.
 
 ## Improving an agent
 
@@ -144,24 +139,28 @@ Run [`docs/improve-agent.md`](docs/improve-agent.md). Single-pass loop: define t
 
 ## Evals
 
-The eval suite lives in [`evals/`](evals/) — two files. Each case wraps agno's [`AccuracyEval`](https://docs.agno.com/evals/accuracy) (LLM judge) and/or [`ReliabilityEval`](https://docs.agno.com/evals/reliability) (tool-call assertion). Run with `python -m evals`. Results log to Postgres via `db=eval_db` so history is visible at os.agno.com.
+The eval suite lives in [`evals/`](evals/). Each case wraps agno's [`AccuracyEval`](https://docs.agno.com/evals/accuracy) (LLM judge) and/or [`ReliabilityEval`](https://docs.agno.com/evals/reliability) (tool-call assertion). Run with `python -m evals`. Results log to Postgres via `db=eval_db` so history is visible at os.agno.com.
 
 To diagnose failures and fix in scope, run [`docs/run-evals.md`](docs/run-evals.md) in Claude Code.
+
+To hill-climb on a failing agent's INSTRUCTIONS automatically — eval suite as the verifier, no human in the loop — run `python -m evals.auto_improve --agent <slug>`. Refuses to start with uncommitted changes in the target file; persists each accepted improvement to disk so `git diff` always reflects what changed.
 
 ## Environment Variables
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `OPENAI_API_KEY` | yes | — | OpenAI key for models + embeddings. |
-| `RUNTIME_ENV` | no | `prd` | `dev` for hot-reload + JWT off. |
+| `RUNTIME_ENV` | no | `prd` | `dev` enables hot-reload and disables JWT. Compose sets this to `dev` for local. |
 | `JWT_VERIFICATION_KEY` | prd | — | Public key from os.agno.com. Required when `RUNTIME_ENV=prd` and `authorization=True`. |
-| `AGENTOS_URL` | no | `http://127.0.0.1:8000` | Scheduler base URL. Override when AgentOS is reachable elsewhere. |
-| `PARALLEL_API_KEY` | no | — | Authenticates the WebSearch Agent's MCP connection (raises rate ceiling). |
+| `AGENTOS_URL` | no | `http://127.0.0.1:8000` | Scheduler base URL. Set to your Railway domain in production so cron triggers reach AgentOS. |
+| `PARALLEL_API_KEY` | no | — | Authenticates the WebSearch Agent's Parallel SDK / MCP connection (raises rate ceiling). |
 | `SLACK_BOT_TOKEN` | no | — | Bot token. Set with signing secret to enable Slack interface. |
 | `SLACK_SIGNING_SECRET` | no | — | Signing secret. Both must be set for the interface to load. |
 | `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASS` / `DB_DATABASE` | no | matches compose | Postgres connection. |
 | `DB_DRIVER` | no | `postgresql+psycopg` | SQLAlchemy driver. |
-| `WAIT_FOR_DB` | no | `False` | If `True`, entrypoint blocks on the DB before starting. Compose sets this. |
+| `PORT` | no | `8000` | API server port. |
+| `AGNO_DEBUG` | no | `False` | If `True`, agno emits verbose debug logs. Compose sets this for dev. |
+| `WAIT_FOR_DB` | no | `False` | If `True`, the entrypoint blocks on the DB before starting. Compose sets this. |
 
 ## Ports
 
@@ -180,7 +179,7 @@ See [agno scheduler docs](https://docs.agno.com/agent-os/scheduler) for the cron
 
 ## Slack
 
-Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET` and restart. The default wiring in `app/main.py` routes Slack messages to `web_search` — change the `agent=` arg to point at any other agent. Full setup: [`docs/SLACK_CONNECT.md`](docs/SLACK_CONNECT.md).
+Set `SLACK_BOT_TOKEN` and `SLACK_SIGNING_SECRET` and restart. The default wiring in `app/main.py` routes Slack messages to `code_search` — change the `agent=` arg to point at any other agent. See the [agno Slack interface docs](https://docs.agno.com/agent-os/interfaces/overview) for the Slack-side app setup.
 
 For Discord, Telegram, WhatsApp, and custom UIs, mirror the Slack conditional pattern with the relevant agno interface — see [agno interfaces overview](https://docs.agno.com/agent-os/interfaces/overview).
 
