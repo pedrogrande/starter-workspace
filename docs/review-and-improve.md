@@ -20,6 +20,7 @@ This is a **recurring sweep** — meant to be re-run regularly. On a clean repo 
 - New agent file on disk not yet imported in [`app/main.py`](../app/main.py) (add the import + append to `agents=[...]`).
 - Missing `quick_prompts` block for a registered agent (draft three from the agent's `INSTRUCTIONS`; flag the new entries so the user can refine).
 - Missing or wrong cross-links between `docs/*.md` files.
+- Single-line factual claim in one doc contradicted by another doc or by code (e.g. one doc says "hot-reload picks up new agents" while another says a restart is required) — auto-fix the doc, not the code.
 
 **Flag, don't fix** (surface for the user):
 

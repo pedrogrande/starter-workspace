@@ -12,6 +12,13 @@ This is a **single-pass** improvement loop. One pass usually takes 15-30 minutes
 ## 0. Preconditions
 
 - Live container reachable: `curl -sSf http://localhost:8000/health` returns 200. If not, ask the user to `docker compose up -d --build` first. (`docker compose ps` is unreliable from worktrees or alternate clones — trust the health probe.)
+- Live container is bound to *this* checkout — otherwise hot-reload won't see your edits:
+
+  ```bash
+  docker inspect agentos-api --format '{{range .Mounts}}{{.Source}}{{"\n"}}{{end}}' | grep -F "$(pwd)"
+  ```
+
+  Empty result = the container's `/app` is bound to a different repo path. Either `cd` to that repo or restart the container from this directory (`docker compose down && docker compose up -d --build`).
 - Ask the user for the target agent **slug** (e.g. `web-search`).
 - Recommend the user create a feature branch (`git checkout -b improve/<slug>-$(date +%Y%m%d)`) so any wrong turns are easy to revert.
 
@@ -90,11 +97,17 @@ If failures span multiple levers, fix the simplest `INSTRUCTIONS`-shaped failure
 
 ## 6. Hot-reload, re-probe failing cases
 
-Save the file. Wait ~2 seconds for uvicorn's reloader. Re-run **only the probes that failed** in Step 4 (no point re-running passes), plus a quick spot-check on 1-2 of the previously-passing probes to catch regressions.
+Save the file. Wait ~2 seconds for uvicorn's reloader. Before re-probing, confirm the edit reached the container:
+
+```bash
+docker exec agentos-api grep -c "<unique substring from your edit>" /app/agents/<slug>.py
+```
+
+`0` means the file in the container hasn't changed — almost always a bind-mount mismatch (Step 0 catches this earlier; if you skipped that check, run `docker exec agentos-api ls -la /app/agents/<slug>.py` and compare mtime to your save). Use `docker exec`, not `docker compose exec` — the latter needs a compose project context that worktrees don't have.
+
+Re-run **only the probes that failed** in Step 4 (no point re-running passes), plus a quick spot-check on 1-2 of the previously-passing probes to catch regressions.
 
 Did the failures pass this time? Did anything previously passing regress?
-
-If your edit isn't reflected in the next probe, run `docker compose exec agentos-api ls -la /app/agents/<slug>.py` and confirm the file mtime matches what you just saved. Bind-mount mismatches and read-only mounts both look like "reload didn't fire."
 
 ## 7. Iterate
 
@@ -111,7 +124,7 @@ Summarize for the user:
 - N probes generated, M passed initially, K passed finally.
 - One line per accepted edit (which lever, what changed).
 - `git diff agents/<slug>.py` (one short block).
-- Suggested commit message and next step (commit, regress, iterate).
+- Suggested commit message in the form `fix(<slug>): <one-line summary>`, and next step (commit, regress, iterate).
 
 For a regression check across the committed eval suite, see [`docs/eval-and-improve.md`](eval-and-improve.md).
 

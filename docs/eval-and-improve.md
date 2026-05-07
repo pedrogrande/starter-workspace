@@ -21,6 +21,8 @@ python -m evals --case <name> # single case while iterating
 
 Output ends with a summary block. Exit code is 0 on all-pass, non-zero on any failure or error.
 
+Stderr noise around MCP teardown (`RuntimeError: Event loop is closed`, httpx timeouts) at the end of a run is harmless — only the `Eval Summary` table and exit code count.
+
 ## 2. Diagnose each failure
 
 For every failed case, decide which kind of failure it is and fix at the appropriate layer:
@@ -31,6 +33,8 @@ For every failed case, decide which kind of failure it is and fix at the appropr
 | Judge fails, response is fabricated | Agent hallucinated when it should have said it didn't know | Add a "if you can't find a real source, say so plainly" rule to the agent's instructions |
 | Reliability fails: "missing tool X" | Agent didn't call the expected tool on this prompt | (a) Strengthen the routing rule in instructions, OR (b) the case is too narrow — broaden `expected_tool_calls` or drop the assertion |
 | Reliability fails: "additional tool Y called" with `allow_additional_tool_calls=False` | Agent fanned out beyond the case's expectation | Tighten the agent's instructions OR set `allow_additional_tool_calls=True` |
+| Reliability fails on web-search tool name (`parallel_search` ↔ `web_search`) | `PARALLEL_API_KEY` mismatch between `.env` and your shell — `evals/cases.py` pins `_WEB_SEARCH_TOOL` at import time | Sync the var in both places, then re-run |
+| Same case flips PASS/FAIL across consecutive runs with no code change | Judge variance — rubric is too loose | Re-run 2-3 times to confirm; if it keeps flipping, tighten the case's `criteria` (more specific, more falsifiable) |
 | Single case fails on full suite but passes alone | Transient flake or upstream rate limit (429s, MCP shutdown traceback) | Re-run the case in isolation. If it passes, re-run the full suite. If 429s persist, back off — don't fix the agent. |
 | Many cases fail at once | Broad regression — model swap, MCP server down, tool removed | Diagnose the root cause first; do NOT paper over with prompt edits |
 | `eval_db` write errors | Postgres down or migration missing | Bring DB up; check `docker logs agentos-db` |
