@@ -7,14 +7,13 @@ You are creating a new agent in this AgentOS template. The user already has the 
 
 ## 0. Preconditions
 
-- `agentos-api` container is up: `docker compose ps` should show it running.
-- `curl -sSf http://localhost:8000/health` returns 200.
+- Live container reachable: `curl -sSf http://localhost:8000/health` returns 200. (`docker compose ps` is unreliable from worktrees or alternate clones — trust the health probe.)
 
-If either is missing, ask the user to run `docker compose up -d --build` and wait for it to come up.
+If it isn't reachable, ask the user to run `docker compose up -d --build` and wait for it to come up.
 
 ## 1. Ask the user
 
-**How to ask:** Use the `AskUserQuestion` tool for choice-shaped prompts — the branching opener, the role pick, the systems multiselect, the agent-idea suggestions, and the **Pattern** pick are all good fits. It renders click-to-select buttons, much smoother than parsing free-text replies. Use plain prompts only for free-form fields (the recurring-task description, the slug).
+**Ask via the `AskUserQuestion` tool** for every choice-shaped prompt below — the branching opener, the role pick, the systems multiselect, the agent-idea suggestions, and the **Pattern** pick. It renders click-to-select buttons, much smoother than parsing free-text replies. Use plain prompts only for free-form fields (the recurring-task description, the slug).
 
 Open with a single branching question — don't dump five questions at once:
 
@@ -66,6 +65,8 @@ For each toolkit, capture four things:
 - **Constructor args** that matter for this agent (categories, domains, max_results, etc.).
 - **Required env vars** — feed these back into Step 1, item 4.
 - **Pip dependencies** — some toolkits need extra packages (`exa-py`, `anthropic`, `firecrawl-py`, `linear-sdk`, …). The toolkit's `Prerequisites` section lists them. Capture now, install in Step 6.
+
+If the toolkit's docs page has no `Prerequisites` or `Authentication` section, the toolkit is keyless and needs no env vars or extra pip deps (e.g. HackerNews, ArXiv, Wikipedia, DuckDuckGo).
 
 Don't guess any of the four. Skip this step entirely if the agent is chat-only with no tools.
 
@@ -179,12 +180,14 @@ jq -r '.content // .' < /tmp/agent-out.json
 Check the container logs to see which tools fired:
 
 ```bash
-docker logs agentos-api --since 30s 2>&1 | grep -E "Tool Calls|Running:|Error" | head -40
+docker logs agentos-api --since 30s 2>&1 | grep -E "Running: \w+\(" | head -40
 ```
+
+(`Running: <tool>(` is the line shape agno emits per tool call when `AGNO_DEBUG=True`, which compose sets for dev. Without `AGNO_DEBUG`, expect no matches — `HTTP 200` and a non-empty body are then your only signal.)
 
 ## 8. If the smoke test fails
 
-- **HTTP 404** — the agent isn't registered, or the container wasn't restarted. Re-check Step 4 and Step 6.
+- **HTTP 404** — the agent isn't registered, the container wasn't restarted, or your edits aren't reaching the bind-mount. Re-check Step 4 and Step 6. If both look right, run `docker inspect agentos-api --format '{{ range .Mounts }}{{ .Source }} → {{ .Destination }}{{ "\n" }}{{ end }}'` to confirm `/app` is bound to *this* repo's path (a stale clone or a different worktree is a common cause).
 - **HTTP 5xx** — read `docker logs agentos-api --tail 50` for the traceback. Most failures are import errors, missing env vars, or a typo in the agent's `tools=` list.
 - **Empty response** — check the logs for tool call errors (rate limits, missing API keys, MCP server unreachable). Surface the issue to the user; don't paper over it.
 - **Tool not firing when expected** — the instruction prompt isn't strong enough. Tell the user; suggest tightening or running `docs/improve-agent.md` once the agent is loaded.
