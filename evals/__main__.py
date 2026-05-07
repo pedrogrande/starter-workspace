@@ -57,7 +57,11 @@ async def _run_case_async(case: Case, *, verbose: bool) -> CaseOutcome:
 
     # One agent run per case — feeds both checks.
     try:
-        response = await case.agent.arun(input=case.input, stream=False)
+        with console.status(
+            f"[bold]running[/bold] {case.agent.id}…",
+            spinner="dots",
+        ):
+            response = await case.agent.arun(input=case.input, stream=False)
     except Exception as exc:
         return CaseOutcome(name=case.name, error=f"agent.arun: {type(exc).__name__}: {exc}")
 

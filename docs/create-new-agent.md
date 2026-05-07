@@ -26,7 +26,16 @@ Ask the user, in one message:
 
 Don't ask all these on separate turns — one consolidated message.
 
-## 2. Generate the agent file
+## 2. Ground the design in agno docs
+
+If the user named any specific toolkit, MCP server, or integration the agent should use (Linear, Stripe, GitHub, Anthropic Claude, etc.), search agno docs **before** writing code:
+
+- Preferred: the `agno-docs` MCP server (configured in [`.mcp.json`](../.mcp.json)) — search for the toolkit / integration name and read the relevant page(s).
+- Fallback: fetch <https://docs.agno.com/llms.txt> and search inline for the relevant sections.
+
+Use what you find to ground the `tools=[…]` list in the real agno API — correct import path, constructor args, required env vars. Don't guess. Skip this step if the agent is chat-only with no tools.
+
+## 3. Generate the agent file
 
 Create `agents/<slug>.py` (replacing `-` with `_` for the filename: `agents/linear_agent.py`). Follow the pattern of one of the two reference agents:
 
@@ -72,7 +81,7 @@ Notes:
 - If the agent uses an `MCPTools` instance, pass it through `tools=[mcp_tools]` directly. AgentOS connects/closes MCP servers automatically — don't manage the lifecycle yourself.
 - If a context provider needs a model, reuse `default_model()` so the model id stays in one place.
 
-## 3. Register in `app/main.py`
+## 4. Register in `app/main.py`
 
 Add the import and append to the `agents=[…]` list:
 
@@ -86,7 +95,7 @@ agent_os = AgentOS(
 )
 ```
 
-## 4. Quick prompts
+## 5. Quick prompts
 
 Add three suggested prompts to [`app/config.yaml`](../app/config.yaml) under `chat.quick_prompts`, keyed by the agent's `id`:
 
@@ -99,7 +108,7 @@ chat:
       - "Third example prompt"
 ```
 
-## 5. Dependencies (only if needed)
+## 6. Dependencies (only if needed)
 
 If the agent imports a new package (e.g. `from anthropic import …` for a Claude tool), add it to the `dependencies` list in [`pyproject.toml`](../pyproject.toml), then regenerate the lockfile:
 
@@ -115,7 +124,7 @@ docker compose up -d --build
 
 If no new dependency was added, hot-reload will pick the new agent up automatically — no rebuild needed.
 
-## 6. Smoke test
+## 7. Smoke test
 
 Wait ~2 seconds for hot-reload, then probe the agent via cURL:
 
@@ -136,16 +145,16 @@ Check the container logs to see which tools fired:
 docker logs agentos-api --since 30s 2>&1 | grep -E "Tool Calls|Running:|Error" | head -40
 ```
 
-## 7. If the smoke test fails
+## 8. If the smoke test fails
 
-- **HTTP 404** — the agent isn't registered. Re-check Step 3.
+- **HTTP 404** — the agent isn't registered. Re-check Step 4.
 - **HTTP 5xx** — read `docker logs agentos-api --tail 50` for the traceback. Most failures are import errors, missing env vars, or a typo in the agent's `tools=` list.
 - **Empty response** — check the logs for tool call errors (rate limits, missing API keys, MCP server unreachable). Surface the issue to the user; don't paper over it.
 - **Tool not firing when expected** — the instruction prompt isn't strong enough. Tell the user; suggest tightening or running `docs/improve-agent.md` once the agent is loaded.
 
 Iterate at most 2-3 times on the prompt before stopping and surfacing the question to the user.
 
-## 8. Done
+## 9. Done
 
 When the smoke test passes:
 
