@@ -14,6 +14,8 @@ If either is missing, ask the user to run `docker compose up -d --build` and wai
 
 ## 1. Ask the user
 
+**How to ask:** Use the `AskUserQuestion` tool for choice-shaped prompts — the branching opener, the role pick, the systems multiselect, the agent-idea suggestions, and the **Pattern** pick are all good fits. It renders click-to-select buttons, much smoother than parsing free-text replies. Use plain prompts only for free-form fields (the recurring-task description, the slug).
+
 Open with a single branching question — don't dump five questions at once:
 
 > Do you have an agent in mind, or would you like a guided experience?

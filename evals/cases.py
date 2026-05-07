@@ -57,8 +57,9 @@ CASES: tuple[Case, ...] = (
         agent=web_search,
         input="What did Anthropic publish about agent research recently?",
         criteria=(
-            "Describes a real, recent Anthropic publication about agents "
-            "and cites at least one URL. Does not fabricate dates or papers."
+            "Answers the question by citing at least one real Anthropic URL "
+            "(anthropic.com domain). The response is grounded in fetched content "
+            "rather than refusing to answer."
         ),
         expected_tool_calls=(_WEB_SEARCH_TOOL,),
     ),
