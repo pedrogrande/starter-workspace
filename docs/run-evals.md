@@ -14,8 +14,8 @@ You're running the agent platform's eval suite, diagnosing every failure, fixing
 ## 1. Run the suite
 
 ```bash
-python -m evals               # full suite, verbose (response + tool calls per case)
-python -m evals -q            # same but only the summary
+python -m evals               # full suite, concise (response + judge verdicts)
+python -m evals -v            # stream the full agent run with rich panels + eval tables
 python -m evals --case <name> # single case while iterating
 ```
 

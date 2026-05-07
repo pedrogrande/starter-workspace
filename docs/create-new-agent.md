@@ -14,7 +14,29 @@ If either is missing, ask the user to run `docker compose up -d --build` and wai
 
 ## 1. Ask the user
 
-Ask the user, in one message:
+Open with a single branching question — don't dump five questions at once:
+
+> Do you have an agent in mind, or would you like a guided experience?
+
+If the user immediately describes a concrete agent ("build me a GitHub PR reviewer"), they've picked the second branch — skip to **Specifics**.
+
+### Guided experience
+
+Ask three light discovery questions in one message:
+
+- What's your role? (engineer, PM, founder, analyst, ops, …)
+- What's a recurring task that takes you real time?
+- Which systems do you live in day-to-day? (Slack, GitHub, Linear, Notion, your own DB, …)
+
+Use the answers + the `agno-docs` MCP (configured in [`.mcp.json`](../.mcp.json)) to surface **3-5 concrete agent ideas** grounded in real agno toolkits. For each suggestion: a short name, a one-sentence purpose, and the toolkit(s) it would use.
+
+Common starting points: GitHub PR reviewer, Linear triager, knowledge-base Q&A over a `docs/` folder, Slack on-call digest, market-scan / web research.
+
+Once the user picks one, you have name, purpose, and tools settled — only ask for what's still unknown under **Specifics**.
+
+### Specifics
+
+Ask, in one consolidated message:
 
 1. **Name and purpose** — what should this agent do? One sentence.
 2. **Pattern** — does it use:
@@ -24,7 +46,7 @@ Ask the user, in one message:
 4. **Model** — default is `gpt-5.4` via `app.settings.default_model()`. Override only if the user asks.
 5. **Slug** — short kebab-case id (e.g. `linear-agent`). Used as the agent's `id`, in URLs, and in `app/config.yaml`.
 
-Don't ask all these on separate turns — one consolidated message.
+Skip any item the guided path already settled. Propose sensible defaults for **Pattern** and **Slug** when you can — don't make the user re-answer questions.
 
 ## 2. Ground the design in agno docs
 

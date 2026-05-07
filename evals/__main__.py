@@ -1,9 +1,10 @@
 """
 Run Evals
-==============
+=========
 
-python -m evals                # run all cases
+python -m evals                # run all cases (concise UI)
 python -m evals --case <name>  # run one case
+python -m evals -v             # stream the agent's run with full panels
 
 Each case runs the agent once, then optionally checks the response with
 `AgentAsJudgeEval` (when `criteria` is set) and `ReliabilityEval` (when
@@ -26,7 +27,10 @@ from uuid import uuid4  # noqa: E402
 
 import typer  # noqa: E402
 from agno.eval import AgentAsJudgeEval, ReliabilityEval  # noqa: E402
+from agno.run.agent import RunOutput  # noqa: E402
 from rich.console import Console  # noqa: E402
+from rich.live import Live  # noqa: E402
+from rich.status import Status  # noqa: E402
 from rich.table import Table  # noqa: E402
 
 from evals.cases import CASES, Case, eval_db  # noqa: E402
@@ -56,14 +60,15 @@ async def _run_case_async(case: Case, *, verbose: bool) -> CaseOutcome:
     judge_err: str | None = None
     rel_err: str | None = None
 
-    # Dedicated session_id per case so `aget_last_run_output` reads back the
-    # right run, and so eval traffic doesn't bleed into agent history.
+    # Dedicated session_id per case so eval traffic doesn't bleed into agent
+    # history, and so verbose mode can fetch the run back via aget_last_run_output.
     session_id = f"eval-{case.name}-{uuid4().hex[:8]}"
 
+    response: RunOutput | None
     try:
         if verbose:
-            # Stream the agent run with rich panels (message → tool calls →
-            # response), same UI as `os.agno.com`. aprint_response returns None,
+            # Stream the agent run with rich panels (Message → Tool Calls →
+            # Response), same UI as os.agno.com. aprint_response returns None,
             # so fetch the RunOutput from storage afterward for the eval checks.
             await case.agent.aprint_response(
                 input=case.input,
@@ -72,18 +77,17 @@ async def _run_case_async(case: Case, *, verbose: bool) -> CaseOutcome:
                 markdown=True,
             )
             response = await case.agent.aget_last_run_output(session_id=session_id)
-            if response is None:
-                return CaseOutcome(name=case.name, error="agent: no run output recorded")
         else:
-            with console.status(
-                f"[bold]running[/bold] {case.agent.id}…",
-                spinner="dots",
-            ):
-                response = await case.agent.arun(input=case.input, stream=False, session_id=session_id)
+            response = await _run_with_live_spinner(case, session_id)
+        if response is None:
+            return CaseOutcome(name=case.name, error="agent: no run output recorded")
     except Exception as exc:
         return CaseOutcome(name=case.name, error=f"agent.arun: {type(exc).__name__}: {exc}")
 
     output_str = str(response.content) if response.content else ""
+
+    if not verbose:
+        _print_response_concise(response, output_str)
 
     if case.criteria is not None:
         try:
@@ -92,12 +96,14 @@ async def _run_case_async(case: Case, *, verbose: bool) -> CaseOutcome:
                 criteria=case.criteria,
                 scoring_strategy="binary",
                 db=eval_db,
-            ).arun(input=case.input, output=output_str, print_results=True)
+            ).arun(input=case.input, output=output_str, print_results=verbose)
         except Exception as exc:
             judge_err = f"judge: {type(exc).__name__}: {exc}"
         else:
             if judge and judge.results:
                 judge_passed = judge.results[0].passed
+                if not verbose:
+                    _print_judge_verdict(judge.results[0])
             else:
                 judge_err = "judge: returned no result"
 
@@ -109,7 +115,7 @@ async def _run_case_async(case: Case, *, verbose: bool) -> CaseOutcome:
                 expected_tool_calls=list(case.expected_tool_calls),
                 allow_additional_tool_calls=case.allow_additional_tool_calls,
                 db=eval_db,
-            ).run(print_results=True)
+            ).run(print_results=verbose)
         except Exception as exc:
             rel_err = f"reliability: {type(exc).__name__}: {exc}"
         else:
@@ -117,6 +123,8 @@ async def _run_case_async(case: Case, *, verbose: bool) -> CaseOutcome:
                 rel_err = "reliability: returned no result"
             else:
                 rel_passed = rel.eval_status == "PASSED"
+                if not verbose:
+                    _print_reliability_verdict(rel, case.expected_tool_calls)
 
     return CaseOutcome(
         name=case.name,
@@ -124,6 +132,69 @@ async def _run_case_async(case: Case, *, verbose: bool) -> CaseOutcome:
         reliability_passed=rel_passed,
         error="; ".join(e for e in (judge_err, rel_err) if e) or None,
     )
+
+
+async def _run_with_live_spinner(case: Case, session_id: str) -> RunOutput | None:
+    """Stream the agent's run with a single-line spinner that updates per tool call.
+
+    Avoids freezing the screen during long agent calls without spamming the user
+    with the full streaming UI. Captures the final RunOutput via yield_run_output.
+    """
+    base_label = f"[bold]running[/bold] {case.agent.id}…"
+    spinner = Status(base_label, spinner="dots")
+
+    response: RunOutput | None = None
+    with Live(spinner, console=console, transient=True, refresh_per_second=10):
+        async for event in case.agent.arun(
+            input=case.input,
+            stream=True,
+            stream_events=True,
+            yield_run_output=True,
+            session_id=session_id,
+        ):
+            if isinstance(event, RunOutput):
+                response = event
+                continue
+            event_type = getattr(event, "event", None)
+            if event_type == "ToolCallStarted":
+                tool = getattr(event, "tool", None)
+                tool_name = getattr(tool, "tool_name", None)
+                if tool_name:
+                    spinner.update(f"[bold]running[/bold] {case.agent.id} → [cyan]{tool_name}[/cyan]…")
+            elif event_type == "ToolCallCompleted":
+                spinner.update(base_label)
+
+    return response
+
+
+def _print_response_concise(response: RunOutput, output_str: str) -> None:
+    """Plain-text response + one-line tool summary. Used in default (non-verbose) mode."""
+    console.print()
+    console.print("[bold]Response[/bold]")
+    console.print(output_str or "[dim](empty)[/dim]")
+
+    tools = response.tools or []
+    if tools:
+        names = ", ".join(t.tool_name or "?" for t in tools)
+        console.print(f"\n[dim]tools fired:[/dim] {names}")
+
+
+def _print_judge_verdict(eval_result: object) -> None:
+    passed: bool = bool(getattr(eval_result, "passed", False))
+    reason: str = str(getattr(eval_result, "reason", "") or "")
+    style = "green" if passed else "red"
+    tag = "PASS" if passed else "FAIL"
+    console.print(f"\n[bold]Judge:[/bold] [{style}]{tag}[/{style}]")
+    if reason:
+        console.print(f"[dim]  {reason}[/dim]")
+
+
+def _print_reliability_verdict(rel_result: object, expected_tools: tuple[str, ...]) -> None:
+    passed = getattr(rel_result, "eval_status", "") == "PASSED"
+    style = "green" if passed else "red"
+    tag = "PASS" if passed else "FAIL"
+    expected = ", ".join(expected_tools)
+    console.print(f"\n[bold]Reliability:[/bold] [{style}]{tag}[/{style}]  [dim]expected: {expected}[/dim]")
 
 
 def run_case(case: Case, *, verbose: bool) -> CaseOutcome:
@@ -142,7 +213,12 @@ def _check_cell(passed: bool | None) -> str:
 def main(
     ctx: typer.Context,
     case: str = typer.Option(None, "--case", help="Run only this case by name"),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Hide the per-case agent response and tool-call list"),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Stream the full agent run with rich panels (Message → Tool Calls → Response), plus full eval tables.",
+    ),
 ) -> None:
     """Run the eval suite, or one case with --case <name>."""
     if ctx.invoked_subcommand is not None:
@@ -159,7 +235,7 @@ def main(
     outcomes: list[CaseOutcome] = []
     for i, c in enumerate(cases, 1):
         console.rule(f"[bold]{c.name}[/bold]  [dim]{c.agent.id} · {i}/{len(cases)}[/dim]")
-        outcomes.append(run_case(c, verbose=not quiet))
+        outcomes.append(run_case(c, verbose=verbose))
 
     table = Table(title="Eval Summary", title_style="bold sky_blue1", show_header=True, header_style="bold")
     table.add_column("Case", overflow="fold")
