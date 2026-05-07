@@ -156,7 +156,7 @@ def _write_instructions(file_path: Path, new_value: str) -> None:
 def _run_cases(cases: list[Case]) -> list[CaseOutcome]:
     outcomes: list[CaseOutcome] = []
     for c in cases:
-        outcome = run_case(c)
+        outcome = run_case(c, verbose=False)
         outcomes.append(outcome)
         status = "[green]PASS[/green]" if outcome.passed else "[red]FAIL[/red]"
         console.print(f"  {status} {c.name}")

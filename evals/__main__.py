@@ -49,7 +49,7 @@ class CaseOutcome:
         return bool(checks) and all(checks)
 
 
-async def _run_case_async(case: Case) -> CaseOutcome:
+async def _run_case_async(case: Case, *, verbose: bool) -> CaseOutcome:
     judge_passed: bool | None = None
     rel_passed: bool | None = None
     judge_err: str | None = None
@@ -62,6 +62,9 @@ async def _run_case_async(case: Case) -> CaseOutcome:
         return CaseOutcome(name=case.name, error=f"agent.arun: {type(exc).__name__}: {exc}")
 
     output_str = str(response.content) if response.content else ""
+
+    if verbose:
+        _print_agent_run(case, response, output_str)
 
     if case.criteria is not None:
         try:
@@ -104,8 +107,8 @@ async def _run_case_async(case: Case) -> CaseOutcome:
     )
 
 
-def run_case(case: Case) -> CaseOutcome:
-    return asyncio.run(_run_case_async(case))
+def run_case(case: Case, *, verbose: bool) -> CaseOutcome:
+    return asyncio.run(_run_case_async(case, verbose=verbose))
 
 
 def _check_cell(passed: bool | None) -> str:
@@ -116,10 +119,28 @@ def _check_cell(passed: bool | None) -> str:
     return f"[{style}]{tag}[/{style}]"
 
 
+def _print_agent_run(case: Case, response: object, output_str: str) -> None:
+    """Print the full agent response + tool calls. Verbose-mode default."""
+    console.print(f"[bold]Input[/bold]\n{case.input}")
+    console.print(f"\n[bold]Response[/bold]\n{output_str or '[dim](empty)[/dim]'}")
+
+    tools = getattr(response, "tools", None) or []
+    if tools:
+        console.print("\n[bold]Tool calls[/bold]")
+        for t in tools:
+            args_repr = repr(t.tool_args) if t.tool_args else ""
+            line = f"  • {t.tool_name}({args_repr})" if args_repr else f"  • {t.tool_name}()"
+            console.print(line)
+    else:
+        console.print("\n[bold]Tool calls[/bold]  [dim](none)[/dim]")
+    console.print()
+
+
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
     case: str = typer.Option(None, "--case", help="Run only this case by name"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Hide the per-case agent response and tool-call list"),
 ) -> None:
     """Run the eval suite, or one case with --case <name>."""
     if ctx.invoked_subcommand is not None:
@@ -136,7 +157,7 @@ def main(
     outcomes: list[CaseOutcome] = []
     for i, c in enumerate(cases, 1):
         console.rule(f"[bold]{c.name}[/bold]  [dim]{c.agent.id} · {i}/{len(cases)}[/dim]")
-        outcomes.append(run_case(c))
+        outcomes.append(run_case(c, verbose=not quiet))
 
     table = Table(title="Eval Summary", title_style="bold sky_blue1", show_header=True, header_style="bold")
     table.add_column("Case", overflow="fold")
