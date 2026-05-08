@@ -1,21 +1,24 @@
 # AgentOS Railway Template
 
-A complete agent platform you can run on Railway for $20/month. Everything runs in your cloud, behind your auth, with your data in your database.
+A complete agent platform you can run on Railway. Everything runs in your cloud, behind your auth, with your data in your database.
 
-The template ships with four Claude Code prompts to:
+The template ships with five Claude Code prompts to:
 
-1. Create a new agent through a guided flow.
-2. Recursively improve an agent against its own behavior.
-3. Diagnose and fix failing evals.
-4. Sweep the repo for drift between docs, code, and config.
+1. **Create** a new agent.
+2. **Improve** an agent. You steer, Claude executes.
+3. **Tune** an agent. Claude probes its own `INSTRUCTIONS` and edits until it passes.
+4. **Hill-climb** failing evals.
+5. **Review** the repo for drift between docs, code, and config.
 
 The platform has five parts:
 
 1. **Runtime.** FastAPI + AgentOS (`app/main.py`).
 2. **Storage.** PostgreSQL + pgvector (sessions, memory, knowledge, traces).
 3. **Connectors.** MCP servers and toolkits (`agno.tools.*`).
-4. **Interfaces.** Slack out of the box. Discord, Telegram, and custom UIs via [agno interfaces](https://docs.agno.com/agent-os/interfaces/overview).
+4. **Interfaces.** Slack is already wired. Discord, Telegram, and custom UIs via [agno interfaces](https://docs.agno.com/agent-os/interfaces/overview).
 5. **Infrastructure.** Docker locally, Railway in production.
+
+> **TL;DR.** Run locally in four lines. Ship to Railway with one script. Iterate on agents from Claude Code. The rest of this doc is the long form.
 
 ## Step 1: Run locally
 
@@ -44,17 +47,21 @@ The template ships with two reference agents:
 | WebSearch | Direct tools | `parallel_search` / `parallel_extract` (needs `PARALLEL_API_KEY`); `web_search` / `web_fetch` keyless |
 | CodeSearch | Context provider sub-agent | `query_my_codebase` |
 
+**Direct tools**: the agent sees each tool individually. **Context provider**: the agent sees one `query_<thing>` tool that hands off to a sub-agent. Two patterns to copy from when you build your own.
+
 To create a new agent, open [Claude Code](https://claude.ai/code) in this repo and paste:
 
 ```
-Run docs/create-new-agent.md
+Run docs/create-new-agent.md in a new branch
 ```
 
-Claude gathers details about the agent, then generates the file in `agents/`, registers it in `app/main.py`, adds prompts to `app/config.yaml`, restarts the container (uvicorn's reloader doesn't reliably pick up newly registered modules), and smoke-tests via cURL. Usually 5-10 minutes for a simple agent.
+Claude asks a few questions, generates the agent file in `agents/`, registers it in `app/main.py`, adds prompts to `app/config.yaml`, restarts the container, and smoke-tests via cURL. The container restart is needed because uvicorn's reloader doesn't reliably pick up newly-registered modules. Usually 5-10 minutes for a simple agent.
 
-## Step 3: Test your agent
+## Step 3: Test
 
-Chat with it at [os.agno.com](https://os.agno.com), or hit it directly:
+Chat with your agents at [os.agno.com](https://os.agno.com). Run realistic prompts. Try edge cases. Watch the traces and sessions in the UI.
+
+For a quick sanity check from the terminal:
 
 ```sh
 curl -X POST http://localhost:8000/agents/<agent-id>/runs \
@@ -63,31 +70,22 @@ curl -X POST http://localhost:8000/agents/<agent-id>/runs \
   -F "stream=false"
 ```
 
-Run realistic prompts. Try edge cases. Watch the traces and sessions in the UI.
+## Step 4: Improve
 
-## Step 4: Recursively improve your agent
+Two recursive loops for two different patterns:
 
-Whenever you lock in an update to your agent's behavior, hand Claude Code the improvement prompt:
+1. [`docs/improve-agent.md`](docs/improve-agent.md). When you have a specific change in mind (new tool, tighter rule, better tone). You direct, Claude executes.
+2. [`docs/tune-agent.md`](docs/tune-agent.md). When the agent feels off but you can't pinpoint why. Claude derives probes from the agent's `INSTRUCTIONS`, runs them against the live container, judges responses, and edits until it passes.
 
-```
-Run docs/improve-agent.md
-```
+Both run in Claude Code against `http://localhost:8000` with hot-reload, so edits land in ~2 seconds. No rebuild, no restart.
 
-Claude Code uses your running platform to fix the live agent. It runs a single-pass autonomous loop. You don't need to write any test cases, Claude derives them from the agent's `INSTRUCTIONS`:
-
-1. **Read the agent's intent** from its `INSTRUCTIONS`.
-2. **Derive 8-15 probes** covering the golden path, edge cases, tool selection, and adversarial inputs.
-3. **Run them against the live agent** via cURL; capture responses and tool calls from container logs.
-4. **Judge each probe** against expected behavior.
-5. **Edit the agent** — one file, one lever per iteration (instructions, tools, model).
-6. **Hot-reload** picks up the change in ~2s.
-7. **Re-probe failing cases** plus a spot-check for regressions. Iterate up to 5 times.
+Pick the loop that matches how the agent feels right now. Use both over time.
 
 ## Step 5: Lock in behavior with evals
 
-Improve-agent is a fast iteration loop. Evals are the regression suite that runs the same prompts against your agents on a schedule and tells you when behavior drifts.
+The improve and tune loops are fast iteration. Evals are the regression suite that runs the same prompts against your agents on a schedule and tells you when behavior drifts.
 
-The eval surface is two files: [`evals/cases.py`](evals/cases.py) (declarative cases) and [`evals/__main__.py`](evals/__main__.py) (runner). Evals use agno's built-in [`AgentAsJudgeEval`](https://docs.agno.com/evals/agent-as-judge) (LLM judge against a rubric, binary pass/fail) and/or [`ReliabilityEval`](https://docs.agno.com/evals/reliability) (tool-call assertion). No custom DSL, no separate harness. agno's primitives directly.
+The eval surface is two files: [`evals/cases.py`](evals/cases.py) (declarative cases) and [`evals/__main__.py`](evals/__main__.py) (runner). Evals use agno's built-in [`AgentAsJudgeEval`](https://docs.agno.com/evals/agent-as-judge) (LLM judge against a rubric, binary pass/fail) and/or [`ReliabilityEval`](https://docs.agno.com/evals/reliability) (tool-call assertion). No custom DSL, no separate harness. Agno primitives directly.
 
 ```bash
 python -m evals                # run the suite (concise)
@@ -132,6 +130,8 @@ Token-Based Auth gives you three things:
 
 ### 6.4 Get your verification key
 
+> **Heads up.** Live connections at os.agno.com are a paid feature. Use coupon code `PLATFORM30` for a one-month free trial. Cancel before the trial ends if you don't want to be charged.
+
 1. Open [os.agno.com](https://os.agno.com), click **Add OS** → **Live**, enter your Railway domain, and connect.
 2. Enable **Token Based Authorization**.
 3. Paste the public key into `.env.production` (full PEM block, no surrounding quotes):
@@ -141,8 +141,6 @@ JWT_VERIFICATION_KEY=-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkq...
 -----END PUBLIC KEY-----
 ```
-
-> Live connections to AgentOS are paid. Use the `PLATFORM30` coupon code for a 1-month free trial. Cancel before the trial ends if you don't want to be charged.
 
 ### 6.5 Sync env and verify
 
@@ -181,7 +179,7 @@ To auto-deploy on every push to `main`:
 2. Under **Source**, click **Connect Repo** and pick your repo.
 3. Set the deploy branch to `main` and save.
 
-Push to `main` then triggers a build and rolling deploy. `./scripts/railway/env-sync.sh` is still how you sync env changes.
+Push to `main` triggers a build and rolling deploy. `./scripts/railway/env-sync.sh` is still how you sync env changes.
 
 ### Opting out of JWT (not recommended)
 
@@ -208,7 +206,7 @@ Rule of thumb: agents for open questions, teams for routing, workflows for proce
 
 - **Maintenance.** Purge sessions older than 90 days. Vacuum tables.
 - **Proactive runs.** Every weekday morning, summarize overnight news for your portfolio and send to Slack.
-- **Periodic re-evaluation.** Schedule `python -m evals` weekly to catch behavior drift before users do.
+- **Periodic re-evaluation.** Wrap the eval suite as a scheduled workflow to catch behavior drift before users do.
 
 See [agno scheduler docs](https://docs.agno.com/agent-os/scheduler) for the cron API.
 
@@ -240,7 +238,23 @@ For Discord, Telegram, WhatsApp, or a custom UI, mirror the same conditional wit
 
 ### Tools and MCP servers
 
-The WebSearch agent in [`agents/web_search.py`](agents/web_search.py) shows the MCPTools pattern (URL plus transport). Copy it to wire any MCP server. For built-in toolkits (Slack tools, Gmail, GitHub, Linear, etc.), see [agno tools](https://docs.agno.com/tools/toolkits).
+The WebSearch agent in [`agents/web_search.py`](agents/web_search.py) shows the MCPTools pattern (URL plus transport). Copy it to wire any MCP server.
+
+For built-in toolkits, agno ships 100+. A typical wire-up is three lines:
+
+```python
+from agno.tools.linear import LinearTools
+
+linear_agent = Agent(
+    id="linear",
+    model=default_model(),
+    tools=[LinearTools()],
+    instructions="You triage issues in Linear.",
+    db=get_postgres_db(),
+)
+```
+
+See [agno tools](https://docs.agno.com/tools/toolkits) for the full catalog.
 
 ## Environment variables
 
@@ -264,4 +278,4 @@ The WebSearch agent in [`agents/web_search.py`](agents/web_search.py) shows the 
 
 - [Agno documentation](https://docs.agno.com)
 - [AgentOS introduction](https://docs.agno.com/agent-os/introduction)
-- [Agno Discord](https://agno.com/discord)
+- [Agno on GitHub](https://github.com/agno-agi/agno). Drop a star if this is useful.

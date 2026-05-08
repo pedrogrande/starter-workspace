@@ -200,7 +200,7 @@ docker logs agentos-api --since 30s 2>&1 | grep -E "Running: \w+\(" | head -40
 - **HTTP 404** — the agent isn't registered, the container wasn't restarted, or your edits aren't reaching the bind-mount. Re-check Step 4 and Step 6. If both look right, run `docker inspect agentos-api --format '{{ range .Mounts }}{{ .Source }} → {{ .Destination }}{{ "\n" }}{{ end }}'` to confirm `/app` is bound to *this* repo's path (a stale clone or a different worktree is a common cause).
 - **HTTP 5xx** — read `docker logs agentos-api --tail 50` for the traceback. Most failures are import errors, missing env vars, or a typo in the agent's `tools=` list.
 - **Empty response** — check the logs for tool call errors (rate limits, missing API keys, MCP server unreachable). Surface the issue to the user; don't paper over it.
-- **Tool not firing when expected** — the instruction prompt isn't strong enough. Tell the user; suggest tightening or running `docs/improve-agent.md` once the agent is loaded.
+- **Tool not firing when expected** — the instruction prompt isn't strong enough. Tell the user; suggest tightening or running [`docs/improve-agent.md`](improve-agent.md) once the agent is loaded.
 
 Iterate at most 2-3 times on the prompt before stopping and surfacing the question to the user.
 
@@ -209,6 +209,8 @@ Iterate at most 2-3 times on the prompt before stopping and surfacing the questi
 When the smoke test passes:
 
 1. Tell the user the agent's slug. They can chat with it at `https://os.agno.com` (if their OS is connected there) or against `http://localhost:8000` directly for local-only.
-2. Mention `docs/improve-agent.md` for the next-step iteration loop if behavior needs tuning.
+2. Suggest the next-step loops:
+   - [`docs/improve-agent.md`](improve-agent.md) — user-driven changes (add a tool, refine the prompt, fix a bug).
+   - [`docs/tune-agent.md`](tune-agent.md) — autonomous probe-and-harden against the agent's `INSTRUCTIONS`.
 
 A simple agent usually takes 5-10 minutes from "Run docs/create-new-agent.md" to working. More if the user asks for custom tools or an MCP server with auth.

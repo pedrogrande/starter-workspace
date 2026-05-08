@@ -133,7 +133,12 @@ Two options:
 
 ## Improving an agent
 
-Run [`docs/improve-agent.md`](docs/improve-agent.md). Single-pass loop: read the agent's `INSTRUCTIONS`, derive probes, run them against the live agent, judge, edit `agents/<slug>.py`, hot-reload, re-probe, iterate. Most fixes are one sentence in the instructions.
+Two recursive loops over the same agent. Use them together.
+
+- [`docs/improve-agent.md`](docs/improve-agent.md) — **you drive.** Add a tool, add a capability, refine the prompt, fix a known bug. Claude is the Agno-aware pair-programmer (uses the `agno-docs` MCP for any toolkit research). Loop: change → smoke-test → "anything else?".
+- [`docs/tune-agent.md`](docs/tune-agent.md) — **Claude drives.** Derives probes from the agent's `INSTRUCTIONS`, judges, edits, re-runs. No user input needed. Loop: probe → judge → edit → re-probe.
+
+Use `improve-agent.md` to *change* the agent; use `tune-agent.md` to *harden* it against its stated intent. Most fixes from either loop are one sentence in `INSTRUCTIONS`.
 
 ## Evals
 
@@ -173,7 +178,7 @@ Run [`docs/review-and-improve.md`](docs/review-and-improve.md). A recurring swee
 
 - **Maintenance** — purge old sessions, vacuum tables, rotate trace data.
 - **Proactive runs** — every weekday morning, summarize overnight news for your portfolio.
-- **Periodic re-evaluation** — run an improve-agent test suite weekly to catch regressions.
+- **Periodic re-evaluation** — run `python -m evals` weekly to catch regressions.
 
 See [agno scheduler docs](https://docs.agno.com/agent-os/scheduler) for the cron API.
 
