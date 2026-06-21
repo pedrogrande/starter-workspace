@@ -1,0 +1,24 @@
+{
+    "skill_name": "skill-name",
+    "evals": [
+        {
+            "id": 1,
+            "prompt": "Realistic user message with file paths and context. Vary phrasing from casual to precise.",
+            "expected_output": "Human-readable description of what success looks like.",
+            "files": [],
+            "assertions": [
+                "Specific, observable, verifiable statement about the output",
+                "Another verifiable assertion"
+            ]
+        },
+        {
+            "id": 2,
+            "prompt": "Edge case prompt — malformed input, unusual request, or ambiguous instruction.",
+            "expected_output": "Description of expected behavior under edge conditions.",
+            "files": [],
+            "assertions": [
+                "Assertion about edge case handling"
+            ]
+        }
+    ]
+}

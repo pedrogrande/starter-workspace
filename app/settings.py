@@ -5,9 +5,9 @@ App Settings
 Shared runtime objects for the platform.
 """
 
-from agno.models.openai import OpenAIResponses
+from agno.models.ollama import Ollama
 
 
-def default_model() -> OpenAIResponses:
+def default_model() -> Ollama:
     """Fresh model instance per agent — avoids shared-state footguns."""
-    return OpenAIResponses(id="gpt-5.4")
+    return Ollama(id="glm-5.1:cloud")

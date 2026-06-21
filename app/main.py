@@ -8,11 +8,13 @@ from os import getenv
 from pathlib import Path
 
 from agno.os import AgentOS
-from agno.utils.log import log_info
+from agno.utils.log import log_error, log_info
 
+from agents.agno_support import agno_support_agent
 from agents.code_search import code_search
 from agents.web_search import web_search
-from db import get_postgres_db
+from db import get_shared_db
+from teams.engineering_team import engineering_team
 
 # ---------------------------------------------------------------------------
 # Environment
@@ -53,6 +55,9 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
     log_info("AgentOS lifespan: startup")
     try:
         yield
+    except Exception as e:
+        log_error(f"AgentOS lifespan error: {e}")
+        raise
     finally:
         log_info("AgentOS lifespan: shutdown")
 
@@ -62,13 +67,14 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
 # ---------------------------------------------------------------------------
 agent_os = AgentOS(
     name="AgentOS",
-    tracing=True,
+    tracing=getenv("AGNO_TRACING", "false").lower() == "true",
     scheduler=True,
     scheduler_base_url=scheduler_base_url,
     authorization=runtime_env == "prd",
     lifespan=lifespan,
-    db=get_postgres_db(),
-    agents=[web_search, code_search],
+    db=get_shared_db(),
+    agents=[web_search, code_search, agno_support_agent],
+    teams=[engineering_team],
     interfaces=interfaces,
     config=str(Path(__file__).parent / "config.yaml"),
 )
