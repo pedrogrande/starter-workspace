@@ -1,3 +1,5 @@
+# @format
+
 chat:
   quick_prompts:
     web-search:
@@ -8,3 +10,11 @@ chat:
       - "What agents are available in this project?"
       - "How does the database connection work?"
       - "Walk me through the main entry point"
+    engineering-leadership: # ← new
+      - "Review the architecture of this project"
+      - "Plan a migration to a new database driver"
+      - "What are the technical risks in our current setup?"
+    agno-support-agent:
+      - "How do I add a new tool to an agent?"
+      - "What's the difference between a team and a workflow?"
+      - "How does session storage work?"

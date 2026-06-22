@@ -13,7 +13,7 @@ from agno.utils.log import log_error, log_info
 from agents.agno_support import agno_support_agent
 from agents.code_search import code_search
 from agents.web_search import web_search
-from db import get_shared_db
+from db import get_postgres_db
 from teams.engineering_team import engineering_team
 
 # ---------------------------------------------------------------------------
@@ -72,7 +72,7 @@ agent_os = AgentOS(
     scheduler_base_url=scheduler_base_url,
     authorization=runtime_env == "prd",
     lifespan=lifespan,
-    db=get_shared_db(),
+    db=get_postgres_db(),
     agents=[web_search, code_search, agno_support_agent],
     teams=[engineering_team],
     interfaces=interfaces,
