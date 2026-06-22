@@ -9,7 +9,7 @@ from agno.agent import Agent
 from agno.context.workspace import WorkspaceContextProvider
 
 from app.settings import default_model
-from db import get_postgres_db
+from db import get_db
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -36,7 +36,7 @@ code_search = Agent(
     id="code-search",
     name="CodeSearch",
     model=default_model(),
-    db=get_postgres_db(),
+    db=get_db(),
     tools=codebase_context.get_tools(),
     instructions=CODE_SEARCH_INSTRUCTIONS + "\n\n" + codebase_context.instructions(),
     enable_agentic_memory=True,

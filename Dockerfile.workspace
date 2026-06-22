@@ -1,0 +1,55 @@
+# ===========================================================================
+# Coder Workspace Image
+# ===========================================================================
+#
+# Pre-bakes Python dependencies so workspace startup is fast (~5 seconds
+# for git clone + uvicorn). The repo itself is NOT copied — Coder's
+# git-clone module clones it into /app at workspace start.
+#
+# Build and push:
+#   docker build -t ghcr.io/<USERNAME>/course-workspace:latest \
+#       -f Dockerfile.workspace .
+#   docker push ghcr.io/<USERNAME>/course-workspace:latest
+#
+# Rebuild when requirements.txt changes. Existing student workspaces pick
+# up the new image on their next stop/start.
+# ===========================================================================
+
+FROM agnohq/python:3.12
+
+# ---------------------------------------------------------------------------
+# System dependencies
+# ---------------------------------------------------------------------------
+# git          — Coder git-clone module needs it
+# postgresql-client — pg_isready for students who switch to DB_BACKEND=postgres
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl \
+        git \
+        postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Python dependencies — pre-baked so workspace start is fast
+# ---------------------------------------------------------------------------
+WORKDIR /app
+ENV PYTHONPATH=/app
+COPY requirements.txt ./
+RUN uv pip sync requirements.txt --system
+
+# ---------------------------------------------------------------------------
+# Defaults — Coder template can override via env vars
+# ---------------------------------------------------------------------------
+ENV DB_BACKEND=sqlite \
+    RUNTIME_ENV=dev \
+    AGNO_DEBUG=True \
+    DATA_DIR=/app/data
+
+# Create the data directory — mounted as a Docker volume in Coder
+RUN mkdir -p /app/data
+
+# ---------------------------------------------------------------------------
+# Entrypoint — reuse the repo's entrypoint (cloned at workspace start)
+# ---------------------------------------------------------------------------
+# The entrypoint.sh is cloned with the repo. We just set the default command.
+# Coder's startup script overrides this — it runs git-clone then uvicorn.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

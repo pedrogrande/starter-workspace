@@ -24,7 +24,7 @@ cat << 'BANNER'
 BANNER
 echo -e "${NC}"
 
-if [[ "$WAIT_FOR_DB" = true || "$WAIT_FOR_DB" = True ]]; then
+if [[ ("$WAIT_FOR_DB" = true || "$WAIT_FOR_DB" = True) && "$DB_BACKEND" == "postgres" ]]; then
     echo -e "    ${DIM}Waiting for database at ${DB_HOST}:${DB_PORT}...${NC}"
     dockerize -wait tcp://$DB_HOST:$DB_PORT -timeout 300s
     echo -e "    ${BOLD}Database ready.${NC}"

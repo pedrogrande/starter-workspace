@@ -60,6 +60,15 @@ ENV/
 Thumbs.db
 
 # =========================
+# Local data (SQLite + ChromaDB) — never commit student/runtime data
+# =========================
+data/*.db
+data/chromadb/
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+
+# =========================
 # Project-specific
 # =========================
 tmp

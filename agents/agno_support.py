@@ -7,7 +7,7 @@ from agno.agent import Agent
 from agno.tools.mcp import MCPTools
 
 from app.settings import default_model
-from db import get_postgres_db
+from db import get_db
 
 # Keyless MCP endpoint serving the Agno docs. AgentOS handles the
 # connect/close lifecycle as part of its lifespan hook.
@@ -28,7 +28,7 @@ agno_support_agent = Agent(
     id="agno-support-agent",
     name="Agno Support Agent",
     model=default_model(),
-    db=get_postgres_db(),
+    db=get_db(),
     tools=[mcp_tools],
     instructions=INSTRUCTIONS,
     tool_call_limit=10,

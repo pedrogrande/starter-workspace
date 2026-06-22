@@ -22,10 +22,10 @@ from agno.agent import Agent
 
 from agents.code_search import code_search
 from agents.web_search import web_search
-from db import get_postgres_db
+from db import get_db
 
 # Single eval DB instance — every case logs through it.
-eval_db = get_postgres_db()
+eval_db = get_db()
 
 
 # When PARALLEL_API_KEY is set, the WebSearch agent uses the SDK

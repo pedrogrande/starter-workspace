@@ -24,7 +24,7 @@ from agents.agno_support import agno_support_agent
 from agents.code_search import code_search
 from agents.web_search import web_search
 from app.settings import default_model
-from db import create_knowledge, get_postgres_db
+from db import create_knowledge, get_db
 
 # ---------------------------------------------------------------------------
 # Team Members
@@ -34,7 +34,7 @@ project_manager = Agent(
     id="project-manager",
     name="Project Manager",
     model=default_model(),
-    db=get_postgres_db(),
+    db=get_db(),
     instructions="""\
 You are a project manager on the Engineering Leadership team.
 Focus on scope, timelines, priorities, and stakeholder communication.
@@ -52,7 +52,7 @@ technical_lead = Agent(
     id="technical-lead",
     name="Technical Lead",
     model=default_model(),
-    db=get_postgres_db(),
+    db=get_db(),
     instructions="""\
 You are a technical lead on the Engineering Leadership team.
 Focus on architecture, code quality, technical feasibility, and
@@ -91,7 +91,7 @@ engineering_team = Team(
         code_search,
         agno_support_agent,
     ],
-    db=get_postgres_db(),
+    db=get_db(),
     instructions="""\
 You are an Engineering Leadership team. Coordinate between your
 members to provide comprehensive answers that address both

@@ -10,7 +10,7 @@ from agno.tools.mcp import MCPTools
 from agno.tools.parallel import ParallelTools
 
 from app.settings import default_model
-from db import get_postgres_db
+from db import get_db
 
 # When PARALLEL_API_KEY is set, use the official parallel-web SDK —
 # the agent gets `parallel_search` and `parallel_extract` directly.
@@ -38,7 +38,7 @@ web_search = Agent(
     id="web-search",
     name="WebSearch",
     model=default_model(),
-    db=get_postgres_db(),
+    db=get_db(),
     tools=[web_tools],
     instructions=WEB_SEARCH_INSTRUCTIONS,
     enable_agentic_memory=True,

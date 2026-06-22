@@ -16,10 +16,10 @@ Usage:
   python scripts/validate-skill.py ./path/to/skill-name
 """
 
-import sys
+import json
 import os
 import re
-import json
+import sys
 from pathlib import Path
 
 # ── ANSI colors ──────────────────────────────────────────────
@@ -61,8 +61,7 @@ def check_name(name: str, dir_name: str) -> None:
 
     if not re.match(r"^[a-z0-9]+(-[a-z0-9]+)*$", name):
         errors.append(
-            f"name '{name}' contains invalid characters. "
-            "Only lowercase letters, numbers, and single hyphens allowed."
+            f"name '{name}' contains invalid characters. Only lowercase letters, numbers, and single hyphens allowed."
         )
 
     if name.startswith("-") or name.endswith("--"):
@@ -72,10 +71,7 @@ def check_name(name: str, dir_name: str) -> None:
         errors.append("name must not contain consecutive hyphens")
 
     if name != dir_name:
-        errors.append(
-            f"name '{name}' does not match directory name '{dir_name}'. "
-            "This will cause SILENT load failure."
-        )
+        errors.append(f"name '{name}' does not match directory name '{dir_name}'. This will cause SILENT load failure.")
     else:
         passes.append(f"name matches directory: '{name}'")
 
@@ -97,28 +93,21 @@ def check_description(desc: str) -> None:
         errors.append(f"description too long: {len(desc)} chars (max 1024)")
 
     if len(desc) < 20:
-        warnings.append(
-            f"description is very short ({len(desc)} chars). "
-            "Consider adding more trigger context."
-        )
+        warnings.append(f"description is very short ({len(desc)} chars). Consider adding more trigger context.")
 
     # Check for imperative phrasing hints
     lower = desc.lower()
     if "use this skill" in lower or "use when" in lower or "use this when" in lower:
         passes.append("description includes trigger phrasing")
     else:
-        warnings.append(
-            "description may benefit from imperative phrasing "
-            "(e.g., 'Use this skill when...')"
-        )
+        warnings.append("description may benefit from imperative phrasing (e.g., 'Use this skill when...')")
 
     # Check for vague descriptions
     vague_phrases = ["helps with", "a skill for", "this skill does"]
     for phrase in vague_phrases:
         if phrase in lower:
             warnings.append(
-                f"description contains vague phrasing: '{phrase}'. "
-                "Consider being more specific about when to trigger."
+                f"description contains vague phrasing: '{phrase}'. Consider being more specific about when to trigger."
             )
 
 
@@ -129,10 +118,7 @@ def check_line_count(skill_md_path: Path) -> None:
 
     line_count = len(lines)
     if line_count > 500:
-        warnings.append(
-            f"SKILL.md is {line_count} lines (recommended max 500). "
-            "Consider moving detail to references/."
-        )
+        warnings.append(f"SKILL.md is {line_count} lines (recommended max 500). Consider moving detail to references/.")
     else:
         passes.append(f"SKILL.md is {line_count} lines (under 500)")
 
@@ -157,10 +143,7 @@ def check_file_references(skill_md_path: Path, skill_dir: Path) -> None:
 
         resolved = skill_dir / clean_path
         if not resolved.exists():
-            errors.append(
-                f"broken file reference: [{link_text}]({link_path}) — "
-                f"file not found at {resolved}"
-            )
+            errors.append(f"broken file reference: [{link_text}]({link_path}) — file not found at {resolved}")
         else:
             passes.append(f"file reference valid: [{link_text}]({link_path})")
 
@@ -174,10 +157,7 @@ def check_file_references(skill_md_path: Path, skill_dir: Path) -> None:
                     rel = str(item.relative_to(skill_dir))
                     if rel not in referenced_files:
                         # Check if any reference contains this path as a prefix
-                        found = any(
-                            rel.startswith(r) or r.endswith(rel)
-                            for r in referenced_files
-                        )
+                        found = any(rel.startswith(r) or r.endswith(rel) for r in referenced_files)
                         if not found:
                             warnings.append(
                                 f"unreferenced file in {subdir}/: {rel}. "
@@ -207,9 +187,7 @@ def check_directory_structure(skill_dir: Path) -> None:
                     if "prompt" not in ev:
                         warnings.append(f"eval id {ev.get('id', '?')} missing 'prompt'")
                     if "expected_output" not in ev:
-                        warnings.append(
-                            f"eval id {ev.get('id', '?')} missing 'expected_output'"
-                        )
+                        warnings.append(f"eval id {ev.get('id', '?')} missing 'expected_output'")
                 passes.append(f"evals.json valid with {len(data['evals'])} test cases")
         except json.JSONDecodeError as e:
             errors.append(f"evals.json is not valid JSON: {e}")
@@ -261,9 +239,7 @@ def parse_frontmatter(content: str) -> tuple[dict | None, str | None]:
 
 def main() -> int:
     if len(sys.argv) < 2:
-        print(
-            f"{BOLD}Usage:{RESET} python scripts/validate-skill.py ./path/to/skill-name"
-        )
+        print(f"{BOLD}Usage:{RESET} python scripts/validate-skill.py ./path/to/skill-name")
         return 1
 
     skill_dir = Path(sys.argv[1]).resolve()
@@ -328,10 +304,7 @@ def main() -> int:
         print(f"\n{RED}{BOLD}{len(errors)} error(s), {len(warnings)} warning(s){RESET}")
         return 1
 
-    print(
-        f"\n{GREEN}{BOLD}All checks passed.{RESET} "
-        f"{len(passes)} check(s) passed, {len(warnings)} warning(s)."
-    )
+    print(f"\n{GREEN}{BOLD}All checks passed.{RESET} {len(passes)} check(s) passed, {len(warnings)} warning(s).")
     return 0
 
 

@@ -3,6 +3,8 @@ services:
     image: agnohq/pgvector:18
     container_name: starter-db
     restart: unless-stopped
+    profiles:
+      - postgres
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
@@ -38,14 +40,13 @@ services:
       RUNTIME_ENV: dev
       AGNO_DEBUG: "True"
       WAIT_FOR_DB: "True"
+      DB_BACKEND: ${DB_BACKEND:-sqlite}
       starter_URL: http://127.0.0.1:8000
       DB_HOST: starter-db
       DB_PORT: 5432
       DB_USER: ${DB_USER:-ai}
       DB_PASS: ${DB_PASS:-ai}
       DB_DATABASE: ${DB_DATABASE:-ai}
-    depends_on:
-      - starter-db
     networks:
       - starter
     extra_hosts:
