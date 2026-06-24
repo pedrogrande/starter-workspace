@@ -1,15 +1,15 @@
 # Eval and Improve
 
-> Claude Code prompt. Open Claude Code in this repo and paste:
+> Coding agent prompt. Open your coding agent (Claude Code, Copilot, etc.) in this repo and paste:
 > `Run docs/eval-and-improve.md`
 
 You're running the agent platform's eval suite, diagnosing every failure, fixing what's in scope, and stopping when all cases pass. Surface area is two files: [`evals/cases.py`](../evals/cases.py) (declares cases) and [`evals/__main__.py`](../evals/__main__.py) (runner). Each case uses agno's built-in [`AgentAsJudgeEval`](https://docs.agno.com/evals/agent-as-judge) (LLM judge against a `criteria` rubric, binary pass/fail) and/or [`ReliabilityEval`](https://docs.agno.com/evals/reliability) (asserts which tools fired) — no custom DSL.
 
 ## 0. Preconditions
 
-- Postgres reachable on 5432: `nc -z localhost 5432` returns 0. If not, `docker compose up -d agentos-db` from the source repo. (`docker compose ps` is unreliable from worktrees or alternate clones.)
-- Venv active: `source .venv/bin/activate`. If `.venv` doesn't exist (fresh checkout or worktree), run `./scripts/venv_setup.sh` first. `evals/cases.py` imports the agents directly from `agents/`, so no AgentOS server has to be running.
+- Venv active: `source .venv/bin/activate`. If `.venv` doesn't exist (fresh checkout), run `./scripts/venv_setup.sh` first. `evals/cases.py` imports the agents directly from `agents/`, so no AgentOS server has to be running.
 - `.env` populated with `OPENAI_API_KEY` (and `PARALLEL_API_KEY` if you have one — the runner pins the expected web-search tool name based on it). `evals/__main__.py` calls `evals.dotenv.load_dotenv()` at startup, so you do not need to source `.env` first. Worktrees don't inherit `.env` (it's gitignored) — copy it from the source repo if missing.
+- The default backend is SQLite (no external database needed). If `DB_BACKEND=postgres` is set, ensure Postgres is reachable: `nc -z localhost 5432`.
 
 ## 1. Run the suite
 
@@ -37,7 +37,7 @@ For every failed case, decide which kind of failure it is and fix at the appropr
 | Same case flips PASS/FAIL across consecutive runs with no code change | Judge variance — rubric is too loose | Re-run 2-3 times to confirm; if it keeps flipping, tighten the case's `criteria` (more specific, more falsifiable) |
 | Single case fails on full suite but passes alone | Transient flake or upstream rate limit (429s, MCP shutdown traceback) | Re-run the case in isolation. If it passes, re-run the full suite. If 429s persist, back off — don't fix the agent. |
 | Many cases fail at once | Broad regression — model swap, MCP server down, tool removed | Diagnose the root cause first; do NOT paper over with prompt edits |
-| `eval_db` write errors | Postgres down or migration missing | Bring DB up; check `docker logs agentos-db` |
+| `eval_db` write errors | Database not writable — check `DATA_DIR` exists and is writable, or if `DB_BACKEND=postgres`, check Postgres is running |
 
 **Rule:** never weaken a case to make it green. Edit a case only when the assertion was wrong (overspecified rubric, wrong tool name, mismatch with how the agent's tools are named today). Catching a real regression is the whole point.
 
@@ -94,7 +94,7 @@ Run `python -m evals --case <name>` to confirm it passes against the current age
 
 ## 6. Track regressions over time
 
-Every case logs to Postgres via `db=eval_db`. Connect your AgentOS at [os.agno.com](https://os.agno.com) and view eval history — useful for catching slow drift on a weekly cron.
+Every case logs to the database via `db=eval_db`. With the default SQLite backend, this is a local file at `data/agents.db`. Connect your AgentOS at [os.agno.com](https://os.agno.com) and view eval history — useful for catching slow drift on a weekly cron.
 
 To run on a schedule, register the eval suite as a scheduled task on the AgentOS scheduler — see [agno scheduler docs](https://docs.agno.com/agent-os/scheduler).
 

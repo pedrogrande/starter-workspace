@@ -72,10 +72,11 @@ resource "docker_container" "workspace" {
   # official Coder Docker template pattern.
   env = ["CODER_AGENT_TOKEN=${coder_agent.main.token}"]
 
-  # Resource limits — 1 GB RAM / 1 vCPU per student is sufficient for
-  # the Python app + SQLite + ChromaDB. Bump if students run heavy evals.
-  memory    = 1073741824  # 1 GB
-  cpu_quota = 100000      # 1 vCPU (100ms per 100ms = 1 full CPU)
+  # Resource limits — 2 GB RAM / 1.5 vCPU per student.
+  # The extra headroom covers uvicorn --reload (file watcher),
+  # ChromaDB, and Next.js running simultaneously.
+  memory    = 2147483648  # 2 GB (uvicorn --reload + Next.js + ChromaDB)
+  cpu_quota = 150000      # 1.5 vCPU
 
   # The entrypoint runs the Coder agent init script, which downloads and
   # starts the agent. The agent then runs the startup_script (clone repo,
@@ -100,8 +101,9 @@ resource "docker_container" "workspace" {
 resource "coder_agent" "main" {
   os   = "linux"
   arch = "amd64"
+  dir  = "/app"
 
-  startup_script_behavior = "blocking"
+  startup_script_behavior = "non-blocking"
 
   # The startup script runs inside the container after it starts.
   # It clones the repo, installs deps (fast — pre-baked in image),
@@ -130,10 +132,32 @@ resource "coder_agent" "main" {
     # Make entrypoint executable
     chmod +x /app/scripts/entrypoint.sh 2>/dev/null || true
 
-    # Start the AgentOS API in the foreground
-    # (foreground = clean kill on workspace stop, no zombie processes)
-    echo "Starting AgentOS on port 8000..."
-    exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+    # Install code-server (VS Code in the browser) if not already present
+    if ! command -v code-server &>/dev/null; then
+      echo "Installing code-server..."
+      curl -fsSL https://code-server.dev/install.sh | sh
+    fi
+
+    # Start code-server in the background (auth none for Coder proxy)
+    echo "Starting VS Code Browser on port 13337..."
+    code-server --auth none --port 13337 --disable-telemetry /app &
+
+    # Start the AgentOS API in the background with hot-reload.
+    # --reload watches files in agents/ and app/ and auto-reloads on edits.
+    # Adding a brand-new agent file still needs a full restart —
+    # run `./scripts/restart-api.sh` in that case.
+    echo "Starting AgentOS on port 8000 (with hot-reload)..."
+    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir agents --reload-dir app &
+
+    # Wait for AgentOS to be ready
+    until curl -s http://localhost:8000/ > /dev/null 2>&1; do
+      sleep 1
+    done
+    echo "AgentOS is ready."
+
+    # Start Agent-UI in the foreground (clean kill on workspace stop)
+    echo "Starting Agent-UI on port 3000..."
+    cd /agent-ui && exec npx next start -p 3000
   EOT
 
   # App environment variables — these are injected by the agent into
@@ -153,16 +177,52 @@ resource "coder_agent" "main" {
 # Coder apps — clickable URLs in the dashboard
 # ---------------------------------------------------------------------------
 
-# AgentOS API + UI (port 8000)
+# Agent-UI chat interface (port 3000) — primary student interface
+# NOTE: subdomain=true is required for Next.js apps to work correctly through
+# the Coder proxy (path-based proxying breaks absolute asset paths).
+# To enable: set CODER_WILDCARD_ACCESS_URL on the VPS and uncomment subdomain.
+# See docs/coder-workspace-setup-guide.md for details.
+resource "coder_app" "agent_ui" {
+  count        = data.coder_workspace.me.start_count
+  agent_id     = coder_agent.main.id
+  slug         = "agent-ui"
+  display_name = "Agent UI"
+  url          = "http://localhost:3000"
+  icon         = "https://raw.githubusercontent.com/pedrogrande/starter-workspace/main/docs/agno-orange.svg"
+  share        = "owner"
+  order        = 1
+  subdomain    = true
+}
+
+# AgentOS API (port 8000) — secondary, for API exploration
 resource "coder_app" "agentos" {
   count        = data.coder_workspace.me.start_count
   agent_id     = coder_agent.main.id
   slug         = "agentos"
-  display_name = "AgentOS"
+  display_name = "AgentOS API"
   url          = "http://localhost:8000"
-  icon         = "/icon/gear.svg"
+  icon         = "https://raw.githubusercontent.com/pedrogrande/starter-workspace/main/docs/agno-black.svg"
   share        = "owner"
-  order        = 1
+  order        = 2
+  subdomain    = true
+}
+
+# VS Code in the browser (code-server) — web-based IDE
+resource "coder_app" "vscode_browser" {
+  count        = data.coder_workspace.me.start_count
+  agent_id     = coder_agent.main.id
+  slug         = "vscode-browser"
+  display_name = "VS Code Browser"
+  url          = "http://localhost:13337"
+  icon         = "${data.coder_workspace.me.access_url}/icon/code.svg"
+  share        = "owner"
+  order        = 3
+  subdomain    = true
+  healthcheck {
+    url       = "http://localhost:13337/healthz"
+    interval  = 5
+    threshold = 6
+  }
 }
 
 # ---------------------------------------------------------------------------
@@ -172,6 +232,10 @@ resource "coder_app" "agentos" {
 resource "coder_metadata" "workspace_info" {
   count       = data.coder_workspace.me.start_count
   resource_id = docker_container.workspace[0].id
+  item {
+    key   = "Agent UI"
+    value = "http://localhost:3000"
+  }
   item {
     key   = "API URL"
     value = "http://localhost:8000"

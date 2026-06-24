@@ -2,19 +2,43 @@
 # Coder Workspace Image
 # ===========================================================================
 #
-# Pre-bakes Python dependencies so workspace startup is fast (~5 seconds
-# for git clone + uvicorn). The repo itself is NOT copied — Coder's
-# git-clone module clones it into /app at workspace start.
+# Pre-bakes Python dependencies AND Agent-UI so workspace startup is fast
+# (~5 seconds for git clone + uvicorn + next start). The repo itself is NOT
+# copied — Coder's git-clone module clones it into /app at workspace start.
 #
 # Build and push:
-#   docker build -t ghcr.io/<USERNAME>/course-workspace:latest \
-#       -f Dockerfile.workspace .
-#   docker push ghcr.io/<USERNAME>/course-workspace:latest
+#   docker buildx build --platform linux/amd64 \
+#     -t ghcr.io/<USERNAME>/course-workspace:latest \
+#     -f Dockerfile.workspace --push .
 #
-# Rebuild when requirements.txt changes. Existing student workspaces pick
-# up the new image on their next stop/start.
+# Rebuild when requirements.txt or Agent-UI changes. Existing student
+# workspaces pick up the new image on their next stop/start.
 # ===========================================================================
 
+# ---------------------------------------------------------------------------
+# Stage 1: Build Agent-UI (Next.js production build)
+# ---------------------------------------------------------------------------
+FROM node:22-slim AS agent-ui-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+
+RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
+
+WORKDIR /agent-ui
+
+# Clone the forked Agent-UI repo
+# package.json has pnpm.onlyBuiltDependencies whitelist to skip sharp's build script
+RUN git clone https://github.com/pedrogrande/agent-ui.git . && \
+    pnpm install --no-frozen-lockfile
+
+# Build-time env var — Agent-UI defaults to the local AgentOS
+ENV NEXT_PUBLIC_OS_API_URL=http://localhost:8000
+
+RUN pnpm build
+
+# ---------------------------------------------------------------------------
+# Stage 2: Final image (Python + Agent-UI production build)
+# ---------------------------------------------------------------------------
 FROM agnohq/python:3.12
 
 # ---------------------------------------------------------------------------
@@ -22,11 +46,17 @@ FROM agnohq/python:3.12
 # ---------------------------------------------------------------------------
 # git          — Coder git-clone module needs it
 # postgresql-client — pg_isready for students who switch to DB_BACKEND=postgres
+# nodejs       — needed to run `next start` (Node.js runtime for Agent-UI)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         git \
         postgresql-client \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 22 runtime (for `next start`)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
 # Python dependencies — pre-baked so workspace start is fast
@@ -37,19 +67,23 @@ COPY requirements.txt ./
 RUN uv pip sync requirements.txt --system
 
 # ---------------------------------------------------------------------------
+# Agent-UI — copy pre-built production build from builder stage
+# ---------------------------------------------------------------------------
+COPY --from=agent-ui-builder /agent-ui /agent-ui
+
+# ---------------------------------------------------------------------------
 # Defaults — Coder template can override via env vars
 # ---------------------------------------------------------------------------
 ENV DB_BACKEND=sqlite \
     RUNTIME_ENV=dev \
     AGNO_DEBUG=True \
-    DATA_DIR=/app/data
+    DATA_DIR=/app/data \
+    NEXT_PUBLIC_OS_API_URL=http://localhost:8000
 
 # Create the data directory — mounted as a Docker volume in Coder
 RUN mkdir -p /app/data
 
 # ---------------------------------------------------------------------------
-# Entrypoint — reuse the repo's entrypoint (cloned at workspace start)
+# Default command (overridden by Coder's startup script)
 # ---------------------------------------------------------------------------
-# The entrypoint.sh is cloned with the repo. We just set the default command.
-# Coder's startup script overrides this — it runs git-clone then uvicorn.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,15 +1,15 @@
 # Create a New Agent
 
-> Claude Code prompt. Open Claude Code in this repo and paste:
+> Coding agent prompt. Open your coding agent (Claude Code, Copilot, etc.) in this repo and paste:
 > `Run docs/create-new-agent.md`
 
-You are creating a new agent in this AgentOS template. The user already has the platform running locally on `http://localhost:8000` (`RUNTIME_ENV=dev`). Uvicorn hot-reloads on edits inside an existing module, but **registering a new agent module requires a container restart** — see Step 6.
+You are creating a new agent in this AgentOS template. The user already has the platform running inside a Coder workspace on `http://localhost:8000` (`RUNTIME_ENV=dev`). Uvicorn hot-reloads on edits inside an existing module, but **registering a new agent module requires an API restart** — see Step 6.
 
 ## 0. Preconditions
 
-- Live container reachable: `curl -sSf http://localhost:8000/health` returns 200. (`docker compose ps` is unreliable from worktrees or alternate clones — trust the health probe.)
+- Live API reachable: `curl -sSf http://localhost:8000/health` returns 200.
 
-If it isn't reachable, ask the user to run `docker compose up -d --build` and wait for it to come up.
+If it isn't reachable, ask the user to run `./scripts/restart-api.sh` and wait for it to come up.
 
 ## 1. Ask the user
 
@@ -50,7 +50,7 @@ If the user came in with a concrete agent in mind, ask all five below in one con
    - (c) build anyway and surface the auth error during smoke test.
 5. **Slug** — short kebab-case id (e.g. `linear-agent`). Used as the agent's `id`, in URLs, and in `app/config.yaml`. Propose one based on the agent's purpose.
 
-Model defaults to `gpt-5.4` via `app.settings.default_model()` — override only if the user asks.
+Model defaults to `glm-5.1:cloud` via `app.settings.default_model()` — override only if the user asks.
 
 ## 2. Ground the design in agno docs
 
@@ -88,7 +88,7 @@ Required structure:
 from agno.agent import Agent
 
 from app.settings import default_model
-from db import get_postgres_db
+from db import get_db
 
 INSTRUCTIONS = """\
 <one short paragraph describing the agent's job, tools, and the rules
@@ -99,7 +99,7 @@ it should follow when answering>
     id="<slug>",
     name="<DisplayName>",
     model=default_model(),
-    db=get_postgres_db(),
+    db=get_db(),
     tools=[...],                     # or context_provider.get_tools()
     instructions=INSTRUCTIONS,
     enable_agentic_memory=True,
@@ -143,21 +143,22 @@ chat:
       - "Third example prompt"
 ```
 
-## 6. Reload the container
+## 6. Reload the API
 
-After Step 4, **always restart the container** — uvicorn's hot-reload doesn't reliably pick up newly registered modules.
+After Step 4, **always restart the API** — uvicorn's hot-reload doesn't reliably pick up newly registered modules.
 
 - **No new pip deps** (the common case):
 
   ```bash
-  docker compose restart agentos-api
+  ./scripts/restart-api.sh
   ```
 
-- **New pip deps added in Step 2** — update the lockfile and rebuild:
+- **New pip deps added in Step 2** — install them first, then restart:
 
   ```bash
-  ./scripts/generate_requirements.sh
-  docker compose up -d --build
+  uv pip install <package> --system
+  echo "<package>" >> requirements.txt
+  ./scripts/restart-api.sh
   ```
 
 Then verify the agent shows up in the registry before smoke-testing:
@@ -187,18 +188,18 @@ jq -r '.content // .' < /tmp/agent-out.json
 
 Pass = `HTTP 200` and a non-empty `.content` field.
 
-Check the container logs to see which tools fired:
+Check the API logs to see which tools fired:
 
 ```bash
-docker logs agentos-api --since 30s 2>&1 | grep -E "Running: \w+\(" | head -40
+tail -50 /tmp/agentos.log | grep -E "Running: \w+\(" | head -40
 ```
 
-(`Running: <tool>(` is the line shape agno emits per tool call when `AGNO_DEBUG=True`, which compose sets for dev. Without `AGNO_DEBUG`, expect no matches — `HTTP 200` and a non-empty body are then your only signal.)
+(`Running: <tool>(` is the line shape agno emits per tool call when `AGNO_DEBUG=True`, which the Coder workspace sets for dev. Without `AGNO_DEBUG`, expect no matches — `HTTP 200` and a non-empty body are then your only signal.)
 
 ## 8. If the smoke test fails
 
-- **HTTP 404** — the agent isn't registered, the container wasn't restarted, or your edits aren't reaching the bind-mount. Re-check Step 4 and Step 6. If both look right, run `docker inspect agentos-api --format '{{ range .Mounts }}{{ .Source }} → {{ .Destination }}{{ "\n" }}{{ end }}'` to confirm `/app` is bound to *this* repo's path (a stale clone or a different worktree is a common cause).
-- **HTTP 5xx** — read `docker logs agentos-api --tail 50` for the traceback. Most failures are import errors, missing env vars, or a typo in the agent's `tools=` list.
+- **HTTP 404** — the agent isn't registered or the API wasn't restarted. Re-check Step 4 and Step 6. The restart script (`./scripts/restart-api.sh`) kills the old uvicorn process and starts a fresh one — if it failed, check `/tmp/agentos.log` for import errors.
+- **HTTP 5xx** — read `tail -50 /tmp/agentos.log` for the traceback. Most failures are import errors, missing env vars, or a typo in the agent's `tools=` list.
 - **Empty response** — check the logs for tool call errors (rate limits, missing API keys, MCP server unreachable). Surface the issue to the user; don't paper over it.
 - **Tool not firing when expected** — the instruction prompt isn't strong enough. Tell the user; suggest tightening or running [`docs/improve-agent.md`](improve-agent.md) once the agent is loaded.
 
@@ -208,7 +209,7 @@ Iterate at most 2-3 times on the prompt before stopping and surfacing the questi
 
 When the smoke test passes:
 
-1. Tell the user the agent's slug. They can chat with it at `https://os.agno.com` (if their OS is connected there) or against `http://localhost:8000` directly for local-only.
+1. Tell the user the agent's slug. They can chat with it through the Agent-UI (port 3000 in the Coder workspace) or against `http://localhost:8000` directly.
 2. Suggest the next-step loops:
    - [`docs/extend-agent.md`](extend-agent.md) — user-driven changes (add a tool, refine the prompt, fix a bug).
    - [`docs/improve-agent.md`](improve-agent.md) — autonomous probe-and-harden against the agent's `INSTRUCTIONS`.

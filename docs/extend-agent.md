@@ -1,24 +1,17 @@
 # Extend an Agent
 
-> Claude Code prompt. Open Claude Code in this repo and paste:
+> Coding agent prompt. Open your coding agent (Claude Code, Copilot, etc.) in this repo and paste:
 > `Run docs/extend-agent.md`
 
 You are recursively extending a target agent **with the user in the driver's seat**. Each iteration: the user names a change, you implement it with an Agno-aware eye (using the `agno-docs` MCP for any toolkit / API research), the change is verified against the live agent, then you ask if there's more to do. Stop when the user says they're done.
 
-This is the user-driven half of the iteration loop. The autonomous half lives in [`docs/improve-agent.md`](improve-agent.md) — Claude derives probes from the agent's `INSTRUCTIONS` and hardens behavior with no user input. Use this prompt to *change* the agent (add tools, add capabilities, refine the prompt, fix a known bug). Run `improve-agent.md` afterward to confirm nothing else regressed.
+This is the user-driven half of the iteration loop. The autonomous half lives in [`docs/improve-agent.md`](improve-agent.md) — your coding agent derives probes from the agent's `INSTRUCTIONS` and hardens behavior with no user input. Use this prompt to *change* the agent (add tools, add capabilities, refine the prompt, fix a known bug). Run `improve-agent.md` afterward to confirm nothing else regressed.
 
-The platform is on `http://localhost:8000` with hot-reload enabled (`RUNTIME_ENV=dev`), so edits to `agents/<slug>.py` are picked up by uvicorn within ~1s. Edits to `app/main.py` (e.g. registering a new sub-agent) require a container restart — Step 5 covers this.
+The platform is on `http://localhost:8000` with hot-reload enabled (`RUNTIME_ENV=dev`), so edits to `agents/<slug>.py` are picked up by uvicorn within ~1s. Edits to `app/main.py` (e.g. registering a new sub-agent) require an API restart — Step 5 covers this.
 
 ## 0. Preconditions
 
-- Live container reachable: `curl -sSf http://localhost:8000/health` returns 200. If not, ask the user to `docker compose up -d --build` first. (`docker compose ps` is unreliable from worktrees or alternate clones — trust the health probe.)
-- Live container is bound to *this* checkout — otherwise hot-reload won't see your edits:
-
-  ```bash
-  docker inspect agentos-api --format '{{range .Mounts}}{{.Source}}{{"\n"}}{{end}}' | grep -F "$(pwd)"
-  ```
-
-  Empty result = the container's `/app` is bound to a different repo path. Either `cd` to that repo or restart the container from this directory (`docker compose down && docker compose up -d --build`).
+- Live API reachable: `curl -sSf http://localhost:8000/health` returns 200. If not, ask the user to run `./scripts/restart-api.sh` first.
 - Ask the user for the target agent **slug** (e.g. `web-search`).
 - Recommend the user create a feature branch (`git checkout -b extend/<slug>-$(date +%Y%m%d)`) so any wrong turns are easy to revert.
 
@@ -81,29 +74,30 @@ Keep edits surgical. One change per iteration of this loop — if the user asked
 - **Edited `app/main.py`** (registered a sub-agent, changed interfaces) — restart:
 
   ```bash
-  docker compose restart agentos-api
+  ./scripts/restart-api.sh
   ```
 
-- **Added pip deps in `pyproject.toml`** — regenerate the lockfile and rebuild:
+- **Added pip deps in `pyproject.toml`** — install and restart:
 
   ```bash
-  ./scripts/generate_requirements.sh
-  docker compose up -d --build
+  uv pip install <package> --system
+  echo "<package>" >> requirements.txt
+  ./scripts/restart-api.sh
   ```
 
-After a restart or rebuild, poll `/health` until the API is back:
+After a restart, poll `/health` until the API is back:
 
 ```bash
 until curl -sSf http://localhost:8000/health > /dev/null; do sleep 0.5; done
 ```
 
-For hot-reload, confirm the edit reached the container before smoke-testing:
+For hot-reload, confirm the edit reached the API before smoke-testing:
 
 ```bash
-docker exec agentos-api grep -c "<unique substring from your edit>" /app/agents/<slug>.py
+grep -c "<unique substring from your edit>" /app/agents/<slug>.py
 ```
 
-`0` means the file in the container hasn't changed — almost always a bind-mount mismatch. Step 0 catches this earlier.
+`0` means the file hasn't changed — this shouldn't happen in the Coder workspace since files are edited directly in `/app`.
 
 ## 6. Smoke test the change
 
@@ -120,13 +114,13 @@ curl -sS -X POST http://localhost:8000/agents/<slug>/runs \
 jq -r '.content // .' < /tmp/improve-out.json
 ```
 
-Read tool calls from the container logs to confirm the right tool fired:
+Read tool calls from the API logs to confirm the right tool fired:
 
 ```bash
-docker logs agentos-api --since 30s 2>&1 | grep -E "Running: \w+\(" | head -40
+tail -50 /tmp/agentos.log | grep -E "Running: \w+\(" | head -40
 ```
 
-(`Running: <tool>(` is the line shape agno emits per tool call when `AGNO_DEBUG=True`, which compose sets for dev.)
+(`Running: <tool>(` is the line shape agno emits per tool call when `AGNO_DEBUG=True`, which the Coder workspace sets for dev.)
 
 Show the user the response and the tool calls. Did the change land?
 
@@ -173,7 +167,7 @@ web-search:
   - "Summarize the abstract of https://arxiv.org/pdf/2501.12948"
 ```
 
-**Step 5** — pip deps changed: `./scripts/generate_requirements.sh && docker compose up -d --build`. Poll `/health`.
+**Step 5** — pip deps changed: `uv pip install firecrawl-py --system && echo "firecrawl-py" >> requirements.txt && ./scripts/restart-api.sh`. Poll `/health`.
 
 **Step 6** — cURL the agent with the quick prompt. Logs show `Running: scrape_website(` against the arxiv URL. Response is grounded in the PDF content.
 

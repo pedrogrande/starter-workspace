@@ -1,6 +1,6 @@
 # Review and Improve
 
-> Claude Code prompt. Open Claude Code in this repo and paste:
+> Coding agent prompt. Open your coding agent (Claude Code, Copilot, etc.) in this repo and paste:
 > `Run docs/review-and-improve.md`
 
 You are sweeping the whole repo for public-consumption readiness — docs accuracy, every agent reachable, scripts that actually do what the docs claim, no stale env vars, format + validate clean. Most drift is mechanical (renamed file, missing entry in `example.env`, new agent not in the architecture diagram) and you fix it in place. The rest is a punch list you surface to the user.
@@ -32,8 +32,7 @@ This is a **recurring sweep** — meant to be re-run regularly. On a clean repo 
 
 ## 0. Preconditions
 
-- Live container reachable: `curl -sSf http://localhost:8000/health` returns 200. If not, ask the user to `docker compose up -d --build` first — Step 4 needs a live container. (`docker compose ps` is unreliable from worktrees or alternate clones — trust the health probe.)
-- If multiple worktrees of this repo exist on disk, only one container can bind to localhost:8000 — Step 4 will reflect whichever repo last brought the container up, not necessarily this worktree's `app/main.py`. Step 4 has a cross-check for this.
+- Live API reachable: `curl -sSf http://localhost:8000/health` returns 200. If not, ask the user to run `./scripts/restart-api.sh` first — Step 4 needs a live API.
 - Recommend a feature branch so auto-fixes are easy to revert: `git checkout -b review/$(date +%Y%m%d)`.
 
 ## 1. Scope check
@@ -42,7 +41,7 @@ Restate the surface area in 4-5 lines so the user can redirect before you read e
 
 - Top-level docs: [`README.md`](../README.md), [`AGENTS.md`](../AGENTS.md), [`docs/*.md`](../docs/), [`example.env`](../example.env).
 - Code: [`app/`](../app/), [`agents/`](../agents/), [`db/`](../db/), [`evals/`](../evals/), [`scripts/`](../scripts/).
-- Configs: [`compose.yaml`](../compose.yaml), [`Dockerfile`](../Dockerfile), [`pyproject.toml`](../pyproject.toml), [`railway.json`](../railway.json).
+- Configs: [`compose.yaml`](../compose.yaml), [`Dockerfile`](../Dockerfile), [`Dockerfile.workspace`](../Dockerfile.workspace), [`pyproject.toml`](../pyproject.toml), [`coder-template/main.tf`](../coder-template/main.tf).
 
 Skip: `.venv/`, `*_cache/`, `.git/`, anything generated.
 
@@ -79,15 +78,15 @@ The bulk of the work. Diff each pair below; auto-fix per the rules at the top.
 | Cross-links between `docs/*.md` files resolve | `docs/*.md` ↔ `docs/*.md` filenames | Renamed file, broken link |
 | `.mcp.json` servers and the docs that reference them agree | `.mcp.json` ↔ `docs/*.md` | URL changed, server renamed |
 
-## 4. Live container smoke
+## 4. Live API smoke
 
-First, confirm the live container is serving *this* repo's agents — not a stale clone or a different worktree. Compare the API's registered agents against what you parsed from `app/main.py`:
+First, confirm the live API is serving *this* repo's agents. Compare the API's registered agents against what you parsed from `app/main.py`:
 
 ```bash
 curl -s http://localhost:8000/agents | jq -r '.[].id' | sort
 ```
 
-If the list doesn't match the slugs in `agents=[...]`, flag it — Step 4 will be testing the wrong code. Common causes: the container is bound to a different repo path, or `docker compose restart` is needed. Stop and surface to the user.
+If the list doesn't match the slugs in `agents=[...]`, flag it — the API may need a restart (`./scripts/restart-api.sh`). Stop and surface to the user.
 
 For each agent registered in `app/main.py`, hit it with one of its `quick_prompts`:
 
@@ -102,13 +101,13 @@ curl -sS -X POST http://localhost:8000/agents/<slug>/runs \
 jq -r '.content // .' < /tmp/review-<slug>.json | head -20
 ```
 
-Pass = HTTP 200, non-empty content, no errors in the container logs:
+Pass = HTTP 200, non-empty content, no errors in the API logs:
 
 ```bash
-docker logs agentos-api --since 30s 2>&1 | grep -E "Running: \w+\(" | head -40
+tail -50 /tmp/agentos.log | grep -E "Running: \w+\(" | head -40
 ```
 
-(`Running: <tool>(` is the tool-call line shape agno emits when `AGNO_DEBUG=True`, which compose sets for dev. Without `AGNO_DEBUG` expect no matches — `HTTP 200` and a non-empty body are then your only signal.)
+(`Running: <tool>(` is the tool-call line shape agno emits when `AGNO_DEBUG=True`, which the Coder workspace sets for dev. Without `AGNO_DEBUG` expect no matches — `HTTP 200` and a non-empty body are then your only signal.)
 
 Quality issues (response is plausible but wrong, missing citations, wrong tool fired) are out of scope — note them and recommend [`docs/improve-agent.md`](improve-agent.md) (autonomous) or [`docs/extend-agent.md`](extend-agent.md) (user-driven) depending on whether the user has a specific fix in mind.
 

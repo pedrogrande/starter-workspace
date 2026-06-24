@@ -1,6 +1,6 @@
 # Improve an Agent
 
-> Claude Code prompt. Open Claude Code in this repo and paste:
+> Coding agent prompt. Open your coding agent (Claude Code, Copilot, etc.) in this repo and paste:
 > `Run docs/improve-agent.md`
 
 You are recursively improving a target agent **autonomously**. **No user-supplied test cases** — you derive your own probes from the agent's stated purpose (its `INSTRUCTIONS`), test the agent against them, judge the results, and iterate on `agents/<slug>.py` until the agent reliably does what its instructions say it does.
@@ -13,14 +13,7 @@ This is a **single-pass** loop. One pass usually takes 15-30 minutes depending o
 
 ## 0. Preconditions
 
-- Live container reachable: `curl -sSf http://localhost:8000/health` returns 200. If not, ask the user to `docker compose up -d --build` first. (`docker compose ps` is unreliable from worktrees or alternate clones — trust the health probe.)
-- Live container is bound to *this* checkout — otherwise hot-reload won't see your edits:
-
-  ```bash
-  docker inspect agentos-api --format '{{range .Mounts}}{{.Source}}{{"\n"}}{{end}}' | grep -F "$(pwd)"
-  ```
-
-  Empty result = the container's `/app` is bound to a different repo path. Either `cd` to that repo or restart the container from this directory (`docker compose down && docker compose up -d --build`).
+- Live API reachable: `curl -sSf http://localhost:8000/health` returns 200. If not, ask the user to run `./scripts/restart-api.sh` first.
 - Ask the user for the target agent **slug** (e.g. `web-search`).
 - Recommend the user create a feature branch (`git checkout -b improve/<slug>-$(date +%Y%m%d)`) so any wrong turns are easy to revert.
 
@@ -60,13 +53,13 @@ curl -sS -X POST http://localhost:8000/agents/<slug>/runs \
 jq -r '.content // .' < /tmp/probe-<n>.json
 ```
 
-Read the tool calls from the container (`Running: <tool>(` is the line shape agno emits per tool call when `AGNO_DEBUG=True`, which compose sets for dev):
+Read the tool calls from the API logs (`Running: <tool>(` is the line shape agno emits per tool call when `AGNO_DEBUG=True`, which the Coder workspace sets for dev):
 
 ```bash
-docker logs agentos-api --since 30s 2>&1 | grep -E "Running: \w+\(" | head -40
+tail -50 /tmp/agentos.log | grep -E "Running: \w+\(" | head -40
 ```
 
-Logs are container-global. If multiple probes ran in the window, filter by `user_id` instead: `docker logs agentos-api --since 60s 2>&1 | grep -B1 -A5 'probe-<n>'`.
+Logs are process-global. If multiple probes ran in the window, filter by `user_id` instead: `grep -B1 -A5 'probe-<n>' /tmp/agentos.log`.
 
 Save each response so you can compare before vs. after.
 
@@ -99,13 +92,13 @@ If failures span multiple levers, fix the simplest `INSTRUCTIONS`-shaped failure
 
 ## 6. Hot-reload, re-probe failing cases
 
-Save the file. Wait ~2 seconds for uvicorn's reloader. Before re-probing, confirm the edit reached the container:
+Save the file. Wait ~2 seconds for uvicorn's reloader. Before re-probing, confirm the edit is on disk:
 
 ```bash
-docker exec agentos-api grep -c "<unique substring from your edit>" /app/agents/<slug>.py
+grep -c "<unique substring from your edit>" /app/agents/<slug>.py
 ```
 
-`0` means the file in the container hasn't changed — almost always a bind-mount mismatch (Step 0 catches this earlier; if you skipped that check, run `docker exec agentos-api ls -la /app/agents/<slug>.py` and compare mtime to your save). Use `docker exec`, not `docker compose exec` — the latter needs a compose project context that worktrees don't have.
+`0` means the file hasn't changed — this shouldn't happen in the Coder workspace since files are edited directly in `/app`.
 
 Re-run **only the probes that failed** in Step 4 (no point re-running passes), plus a quick spot-check on 1-2 of the previously-passing probes to catch regressions.
 
