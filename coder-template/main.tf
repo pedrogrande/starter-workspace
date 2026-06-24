@@ -22,8 +22,24 @@ data "coder_workspace_owner" "me" {}
 # ---------------------------------------------------------------------------
 # API keys — passed via -var or .tfvars at template push time.
 # Keys are NOT stored in this file (public repo). Use a .tfvars file on the
-# VPS (gitignored) or pass -var="openai_api_key=..." at push time.
-# See coder-template/terraform.tfvars.example for the format.
+# ---------------------------------------------------------------------------
+# API keys — read from TF_VAR_* environment variables on the VPS.
+#
+# Set these once in the Coder provisioner's environment (e.g. /etc/coder/coder.env
+# on the VPS):
+#
+#   TF_VAR_openai_api_key=sk-...
+#   TF_VAR_ollama_api_key=ollama-...
+#
+# Terraform automatically picks up TF_VAR_<name> as the value for variable <name>.
+# Keys are never stored in this file (public repo), never appear in the Coder
+# dashboard, and are marked sensitive so they don't show in Terraform output.
+#
+# After setting the env vars, restart the Coder server:
+#   systemctl restart coder
+#
+# Then push the template (no --var flags needed):
+#   echo yes | coder templates push agentos-course --directory .
 # ---------------------------------------------------------------------------
 
 variable "openai_api_key" {

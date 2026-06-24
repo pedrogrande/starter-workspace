@@ -51,27 +51,26 @@ When you change `coder-template/main.tf` (resource limits, startup script, IDE o
 # 1. Copy the template to the VPS
 scp coder-template/main.tf root@74.208.237.168:/tmp/main.tf
 
-# 2. Push the template with API keys (keys are in terraform.tfvars on the VPS, gitignored)
+# 2. Push the template (API keys are read from TF_VAR_* env vars on the VPS)
 ssh root@74.208.237.168 'cp /tmp/main.tf /tmp/coder-template/ && cd /tmp/coder-template && \
-  echo yes | coder templates push agentos-course --directory . \
-  --var-file=/tmp/coder-template/terraform.tfvars'
+  echo yes | coder templates push agentos-course --directory .'
 
 # 3. Recreate the workspace to pick up the changes
 ssh root@74.208.237.168 'echo yes | coder stop pedrog/starter; sleep 5; echo yes | coder start pedrog/starter'
 ```
 
-**API key setup (one-time):** The API keys are passed as Terraform variables, not stored in the template file (which is in a public repo). On the VPS, create `/tmp/coder-template/terraform.tfvars`:
+**API key setup (one-time on the VPS):** The API keys are stored as `TF_VAR_*` environment variables on the VPS, not in the template file (which is in a public repo). Terraform automatically picks up `TF_VAR_<name>` as the value for `variable "<name>"`.
 
 ```bash
-# On the VPS, one-time setup:
-cat > /tmp/coder-template/terraform.tfvars << 'EOF'
-openai_api_key = "sk-your-key-here"
-ollama_api_key = "ollama-your-key-here"
-EOF
-chmod 600 /tmp/coder-template/terraform.tfvars
+# On the VPS, one-time setup — add to /etc/coder/coder.env:
+ssh root@74.208.237.168 'cat >> /etc/coder/coder.env << EOF
+TF_VAR_openai_api_key=sk-your-key-here
+TF_VAR_ollama_api_key=ollama-your-key-here
+EOF'
+ssh root@74.208.237.168 'systemctl restart coder'
 ```
 
-See `coder-template/terraform.tfvars.example` for the format. Students don't need to enter API keys — they're pre-filled from the `.tfvars` file at template push time.
+After this, every `coder templates push` and every workspace build will have the keys available — no `--var` flags needed. Students don't enter API keys; they're injected automatically.
 
 ## Hot-reload and restarting the API
 

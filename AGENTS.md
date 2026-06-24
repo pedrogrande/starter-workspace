@@ -199,12 +199,12 @@ Run [`docs/review-and-improve.md`](docs/review-and-improve.md). A recurring swee
 
 ## Environment Variables
 
-In the Coder workspace, `OPENAI_API_KEY` and `OLLAMA_API_KEY` are pre-filled from a `terraform.tfvars` file on the VPS (not in the public repo). Students don't need to enter API keys. The rest are set by the Coder template's `coder_agent` env block.
+In the Coder workspace, `OPENAI_API_KEY` and `OLLAMA_API_KEY` are pre-filled from `TF_VAR_*` environment variables on the VPS (set in `/etc/coder/coder.env`, not in the public repo). Students don't need to enter API keys. The rest are set by the Coder template's `coder_agent` env block.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `OPENAI_API_KEY` | yes | — | OpenAI key for embeddings (`text-embedding-3-small`). Pre-filled via Terraform variable. |
-| `OLLAMA_API_KEY` | yes | — | Ollama key for the default model (`glm-5.1:cloud`). Pre-filled via Terraform variable. |
+| `OPENAI_API_KEY` | yes | — | OpenAI key for embeddings (`text-embedding-3-small`). Pre-filled via `TF_VAR_openai_api_key` on the VPS. |
+| `OLLAMA_API_KEY` | yes | — | Ollama key for the default model (`glm-5.1:cloud`). Pre-filled via `TF_VAR_ollama_api_key` on the VPS. |
 | `DB_BACKEND` | no | `sqlite` | `sqlite` (default, zero-server) or `postgres` (external Postgres + pgvector). |
 | `DATA_DIR` | no | `data` | Where SQLite DB + ChromaDB files are stored. Coder sets this to `/app/data` (persistent volume). |
 | `RUNTIME_ENV` | no | `prd` | `dev` enables hot-reload and disables JWT. Coder sets this to `dev`. |
@@ -265,13 +265,10 @@ ssh root@<vps> 'echo yes | coder stop <user>/<workspace>; sleep 5; echo yes | co
 ```bash
 scp coder-template/main.tf root@<vps>:/tmp/main.tf
 ssh root@<vps> 'cp /tmp/main.tf /tmp/coder-template/ && cd /tmp/coder-template && \
-  echo yes | coder templates push agentos-course --directory . \
-  --var-file=/tmp/coder-template/terraform.tfvars'
+  echo yes | coder templates push agentos-course --directory .'
 ```
 
-API keys are passed via `terraform.tfvars` (gitignored on the VPS, not in the public repo). See `coder-template/terraform.tfvars.example` for the format.
-
-See [`docs/pushing-changes-to-Coder.md`](docs/pushing-changes-to-Coder.md) for the full guide on what needs a rebuild vs. just a git push.
+API keys are read from `TF_VAR_*` environment variables on the VPS (set in `/etc/coder/coder.env`). No `--var` flags needed — Terraform picks up `TF_VAR_<name>` automatically. See [`docs/pushing-changes-to-Coder.md`](docs/pushing-changes-to-Coder.md) for the full guide on what needs a rebuild vs. just a git push.
 
 ## Common Tasks
 
