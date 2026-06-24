@@ -43,6 +43,36 @@ ssh root@74.208.237.168 'echo yes | coder stop pedrog/starter; sleep 5; echo yes
 
 The workspace container gets recreated with the new image on start. Students' data persists (it's on the Docker volume at `/app/data`).
 
+## Pushing template changes (main.tf)
+
+When you change `coder-template/main.tf` (resource limits, startup script, IDE options, etc.):
+
+```bash
+# 1. Copy the template to the VPS
+scp coder-template/main.tf root@74.208.237.168:/tmp/main.tf
+
+# 2. Push the template with API keys (keys are in terraform.tfvars on the VPS, gitignored)
+ssh root@74.208.237.168 'cp /tmp/main.tf /tmp/coder-template/ && cd /tmp/coder-template && \
+  echo yes | coder templates push agentos-course --directory . \
+  --var-file=/tmp/coder-template/terraform.tfvars'
+
+# 3. Recreate the workspace to pick up the changes
+ssh root@74.208.237.168 'echo yes | coder stop pedrog/starter; sleep 5; echo yes | coder start pedrog/starter'
+```
+
+**API key setup (one-time):** The API keys are passed as Terraform variables, not stored in the template file (which is in a public repo). On the VPS, create `/tmp/coder-template/terraform.tfvars`:
+
+```bash
+# On the VPS, one-time setup:
+cat > /tmp/coder-template/terraform.tfvars << 'EOF'
+openai_api_key = "sk-your-key-here"
+ollama_api_key = "ollama-your-key-here"
+EOF
+chmod 600 /tmp/coder-template/terraform.tfvars
+```
+
+See `coder-template/terraform.tfvars.example` for the format. Students don't need to enter API keys — they're pre-filled from the `.tfvars` file at template push time.
+
 ## Hot-reload and restarting the API
 
 The AgentOS API runs with `--reload`, which watches files in `agents/` and `app/`. Edits to existing files (tweaking instructions, changing tools, updating `config.yaml`) are picked up automatically — just refresh the browser.

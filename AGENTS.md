@@ -19,6 +19,7 @@ Teams:
 ```
 
 Shared:
+
 - SQLite for agent storage (sessions, memory, metrics, evals, knowledge, schedules).
 - ChromaDB for vector storage (RAG knowledge bases, hybrid search).
 - Both stored on a persistent Docker volume at `/app/data` — survives workspace stop/start.
@@ -59,6 +60,15 @@ Students access the platform through a Coder workspace. The workspace container 
 | AgentOS API | 8000 | The agent platform — agents, teams, knowledge, sessions. |
 | Agent-UI | 3000 | Next.js chat interface with Sessions, Memory, Knowledge views. |
 | VS Code Browser | 13337 | code-server (VS Code in the browser). |
+
+**IDE options:** Students can connect using any of:
+- **VS Code Browser** — click "VS Code Browser" in the Coder dashboard (code-server, no install needed).
+- **VS Code Desktop** — install the [Coder extension](https://marketplace.visualstudio.com/items?itemName=coder.coder), open the Command Palette → "Coder: Connect to Workspace".
+- **Cursor** — install the Coder extension in Cursor, connect the same way as VS Code.
+- **Windsurf** — install the Coder extension in Windsurf, connect the same way.
+- **SSH** — `coder config-ssh` then `ssh coder.<workspace>` from any terminal.
+
+All IDEs connect via SSH to the workspace — no port configuration needed.
 
 **Hot-reload:** Uvicorn runs with `--reload --reload-dir agents --reload-dir app`. Edits to files in `agents/` and `app/` are picked up automatically within ~1s — just refresh the browser. Adding a **new** agent file or registering a new agent in `app/main.py` requires a full restart:
 
@@ -189,12 +199,12 @@ Run [`docs/review-and-improve.md`](docs/review-and-improve.md). A recurring swee
 
 ## Environment Variables
 
-In the Coder workspace, `OPENAI_API_KEY` and `OLLAMA_API_KEY` are set via Coder parameters at workspace creation time. The rest are set by the Coder template's `coder_agent` env block.
+In the Coder workspace, `OPENAI_API_KEY` and `OLLAMA_API_KEY` are pre-filled from a `terraform.tfvars` file on the VPS (not in the public repo). Students don't need to enter API keys. The rest are set by the Coder template's `coder_agent` env block.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `OPENAI_API_KEY` | yes | — | OpenAI key for embeddings (`text-embedding-3-small`). |
-| `OLLAMA_API_KEY` | yes | — | Ollama key for the default model (`glm-5.1:cloud`). |
+| `OPENAI_API_KEY` | yes | — | OpenAI key for embeddings (`text-embedding-3-small`). Pre-filled via Terraform variable. |
+| `OLLAMA_API_KEY` | yes | — | Ollama key for the default model (`glm-5.1:cloud`). Pre-filled via Terraform variable. |
 | `DB_BACKEND` | no | `sqlite` | `sqlite` (default, zero-server) or `postgres` (external Postgres + pgvector). |
 | `DATA_DIR` | no | `data` | Where SQLite DB + ChromaDB files are stored. Coder sets this to `/app/data` (persistent volume). |
 | `RUNTIME_ENV` | no | `prd` | `dev` enables hot-reload and disables JWT. Coder sets this to `dev`. |
@@ -254,8 +264,12 @@ ssh root@<vps> 'echo yes | coder stop <user>/<workspace>; sleep 5; echo yes | co
 
 ```bash
 scp coder-template/main.tf root@<vps>:/tmp/main.tf
-ssh root@<vps> 'cp /tmp/main.tf /tmp/coder-template/ && cd /tmp/coder-template && echo yes | coder templates push agentos-course --directory .'
+ssh root@<vps> 'cp /tmp/main.tf /tmp/coder-template/ && cd /tmp/coder-template && \
+  echo yes | coder templates push agentos-course --directory . \
+  --var-file=/tmp/coder-template/terraform.tfvars'
 ```
+
+API keys are passed via `terraform.tfvars` (gitignored on the VPS, not in the public repo). See `coder-template/terraform.tfvars.example` for the format.
 
 See [`docs/pushing-changes-to-Coder.md`](docs/pushing-changes-to-Coder.md) for the full guide on what needs a rebuild vs. just a git push.
 

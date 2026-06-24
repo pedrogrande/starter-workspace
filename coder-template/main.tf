@@ -20,25 +20,22 @@ data "coder_workspace" "me" {}
 data "coder_workspace_owner" "me" {}
 
 # ---------------------------------------------------------------------------
-# Parameters — students provide their API keys at workspace creation time
+# API keys — passed via -var or .tfvars at template push time.
+# Keys are NOT stored in this file (public repo). Use a .tfvars file on the
+# VPS (gitignored) or pass -var="openai_api_key=..." at push time.
+# See coder-template/terraform.tfvars.example for the format.
 # ---------------------------------------------------------------------------
 
-data "coder_parameter" "openai_api_key" {
-  name         = "openai_api_key"
-  display_name = "OpenAI API Key"
-  description  = "Used for embeddings (text-embedding-3-small). Get one at https://platform.openai.com/api-keys"
-  type         = "string"
-  mutable      = true
-  default      = ""
+variable "openai_api_key" {
+  type      = string
+  sensitive = true
+  default   = ""
 }
 
-data "coder_parameter" "ollama_api_key" {
-  name         = "ollama_api_key"
-  display_name = "Ollama API Key"
-  description  = "Used for the default model (glm-5.1:cloud). Get one at https://ollama.com"
-  type         = "string"
-  mutable      = true
-  default      = ""
+variable "ollama_api_key" {
+  type      = string
+  sensitive = true
+  default   = ""
 }
 
 # ---------------------------------------------------------------------------
@@ -168,8 +165,8 @@ resource "coder_agent" "main" {
     AGNO_DEBUG      = "True"
     DATA_DIR        = "/app/data"
     AGENTOS_URL     = "http://localhost:8000"
-    OPENAI_API_KEY  = data.coder_parameter.openai_api_key.value
-    OLLAMA_API_KEY  = data.coder_parameter.ollama_api_key.value
+    OPENAI_API_KEY  = var.openai_api_key
+    OLLAMA_API_KEY  = var.ollama_api_key
   }
 }
 

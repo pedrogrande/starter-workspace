@@ -1,0 +1,21 @@
+# ---------------------------------------------------------------------------
+# terraform.tfvars.example
+#
+# Copy this file to terraform.tfvars on the VPS and fill in the real API keys.
+# terraform.tfvars is gitignored — real keys never get committed to the repo.
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#   # Edit terraform.tfvars and paste your keys
+#
+# Then push the template:
+#   cd /tmp/coder-template
+#   echo yes | coder templates push agentos-course --directory . --var-file=terraform.tfvars
+#
+# Or pass keys inline (keys won't be persisted to disk):
+#   echo yes | coder templates push agentos-course --directory . \
+#     --var="openai_api_key=sk-..." \
+#     --var="ollama_api_key=ollama-..."
+# ---------------------------------------------------------------------------
+
+openai_api_key = "sk-your-openai-key-here"
+ollama_api_key = "ollama-your-ollama-key-here"

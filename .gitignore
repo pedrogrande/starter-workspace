@@ -43,6 +43,15 @@ ENV/
 .envrc
 
 # =========================
+# Terraform secrets — never commit real API keys
+# =========================
+*.tfvars
+!*.tfvars.example
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# =========================
 # Jupyter / notebooks
 # =========================
 .ipynb_checkpoints/
