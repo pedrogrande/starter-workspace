@@ -156,6 +156,10 @@ Two patterns to copy from:
 - **Direct tools** — see [`agents/web_search.py`](agents/web_search.py). The agent sees each tool individually. Best when the user knows which tools the agent needs.
 - **Context provider** — see [`agents/code_search.py`](agents/code_search.py). The agent sees one `query_<thing>` tool that hands off to a sub-agent. Best for one-source agents and when collapsing many tools into one keeps the model focused.
 
+### Models
+
+`default_model()` returns `Ollama(id="glm-5.1:cloud")` — the default for all agents. To use a different provider (Anthropic, Google, OpenAI, Groq, etc.) in a specific agent or across the platform, see [`docs/using-different-models.md`](docs/using-different-models.md).
+
 ### Database
 
 The default backend is SQLite + ChromaDB (set `DB_BACKEND=sqlite` or leave unset). Both store data on the persistent volume at `/app/data` — no external database server needed. For production or multi-agent shared state, switch to Postgres + pgvector with `DB_BACKEND=postgres`.
