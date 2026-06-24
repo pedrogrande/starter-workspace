@@ -183,6 +183,8 @@ resource "coder_agent" "main" {
     AGENTOS_URL     = "http://localhost:8000"
     OPENAI_API_KEY  = var.openai_api_key
     OLLAMA_API_KEY  = var.ollama_api_key
+    # Point the Ollama CLI / extension at Ollama Cloud (not localhost:11434)
+    OLLAMA_HOST     = "https://ollama.com"
   }
 }
 

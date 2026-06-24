@@ -62,6 +62,7 @@ Students access the platform through a Coder workspace. The workspace container 
 | VS Code Browser | 13337 | code-server (VS Code in the browser). |
 
 **IDE options:** Students can connect using any of:
+
 - **VS Code Browser** — click "VS Code Browser" in the Coder dashboard (code-server, no install needed).
 - **VS Code Desktop** — install the [Coder extension](https://marketplace.visualstudio.com/items?itemName=coder.coder), open the Command Palette → "Coder: Connect to Workspace".
 - **Cursor** — install the Coder extension in Cursor, connect the same way as VS Code.
@@ -205,6 +206,7 @@ In the Coder workspace, `OPENAI_API_KEY` and `OLLAMA_API_KEY` are pre-filled fro
 |---|---|---|---|
 | `OPENAI_API_KEY` | yes | — | OpenAI key for embeddings (`text-embedding-3-small`). Pre-filled via `TF_VAR_openai_api_key` on the VPS. |
 | `OLLAMA_API_KEY` | yes | — | Ollama key for the default model (`glm-5.1:cloud`). Pre-filled via `TF_VAR_ollama_api_key` on the VPS. |
+| `OLLAMA_HOST` | no | `https://ollama.com` | Ollama endpoint. Set to Ollama Cloud so the CLI and IDE extensions use cloud models, not localhost. |
 | `DB_BACKEND` | no | `sqlite` | `sqlite` (default, zero-server) or `postgres` (external Postgres + pgvector). |
 | `DATA_DIR` | no | `data` | Where SQLite DB + ChromaDB files are stored. Coder sets this to `/app/data` (persistent volume). |
 | `RUNTIME_ENV` | no | `prd` | `dev` enables hot-reload and disables JWT. Coder sets this to `dev`. |
