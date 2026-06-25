@@ -124,6 +124,10 @@ resource "coder_agent" "main" {
   startup_script = <<-EOT
     set -e
 
+    # Add PostgreSQL server binaries to PATH (initdb, pg_ctl, postgres, etc.)
+    # They live in /usr/lib/postgresql/16/bin/ which isn't on the default PATH.
+    export PATH="/usr/lib/postgresql/16/bin:$PATH"
+
     # Clone the repo if it doesn't exist
     if [ ! -d /app/.git ]; then
       echo "Cloning repository..."

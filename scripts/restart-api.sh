@@ -38,6 +38,9 @@ log() {
 # Must run from /app
 cd /app
 
+# Add PostgreSQL server binaries to PATH (initdb, pg_ctl, postgres, etc.)
+export PATH="/usr/lib/postgresql/16/bin:$PATH"
+
 # Ensure PostgreSQL is running (in-container, data on persistent volume)
 export PGDATA=/app/data/pgdata
 if ! su postgres -c "pg_isready -q" 2>/dev/null; then
