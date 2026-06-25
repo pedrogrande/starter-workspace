@@ -74,7 +74,8 @@ resource "docker_container" "workspace" {
   name  = "student-${data.coder_workspace_owner.me.name}-${data.coder_workspace.me.name}"
   image = "ghcr.io/pedrogrande/course-workspace:latest"
 
-  # Data volume at /app/data — persists SQLite DB + ChromaDB across restarts
+  # Data volume at /app/data — persists Postgres data + any other state
+  # across restarts. Postgres data lives at /app/data/pgdata.
   volumes {
     volume_name    = docker_volume.workspace_data.name
     container_path = "/app/data"
@@ -85,11 +86,10 @@ resource "docker_container" "workspace" {
   # official Coder Docker template pattern.
   env = ["CODER_AGENT_TOKEN=${coder_agent.main.token}"]
 
-  # Resource limits — 2 GB RAM / 1.5 vCPU per student.
-  # The extra headroom covers uvicorn --reload (file watcher),
-  # ChromaDB, and Next.js running simultaneously.
-  memory    = 2147483648  # 2 GB (uvicorn --reload + Next.js + ChromaDB)
-  cpu_quota = 150000      # 1.5 vCPU
+  # Resource limits — 3 GB RAM / 2 vCPU per student.
+  # Postgres + uvicorn --reload + Next.js + code-server all run in one container.
+  memory    = 3221225472  # 3 GB (Postgres + uvicorn + Next.js + code-server)
+  cpu_quota = 200000      # 2 vCPU
 
   # The entrypoint runs the Coder agent init script, which downloads and
   # starts the agent. The agent then runs the startup_script (clone repo,
@@ -137,6 +137,7 @@ resource "coder_agent" "main" {
 
     # Ensure data directory exists (volume may be empty on first start)
     mkdir -p /app/data
+    chown postgres:postgres /app/data
 
     # Install dependencies (fast — pre-baked in image, this is a safety net)
     cd /app
@@ -144,6 +145,34 @@ resource "coder_agent" "main" {
 
     # Make entrypoint executable
     chmod +x /app/scripts/entrypoint.sh 2>/dev/null || true
+
+    # Start PostgreSQL (in-container, data on persistent volume)
+    export PGDATA=/app/data/pgdata
+    if [ ! -d "$PGDATA" ]; then
+      echo "Initializing PostgreSQL database..."
+      mkdir -p "$PGDATA"
+      chown postgres:postgres "$PGDATA"
+      chmod 700 "$PGDATA"
+      su postgres -c "initdb -D '$PGDATA' --auth=trust" 2>&1 | tail -5
+      # Configure Postgres to listen on localhost
+      echo "listen_addresses = 'localhost'" >> "$PGDATA/postgresql.conf"
+      echo "unix_socket_directories = '/tmp'" >> "$PGDATA/postgresql.conf"
+      su postgres -c "pg_ctl -D '$PGDATA' start -w -l /tmp/pg.log"
+      # Create the course database and user
+      su postgres -c "createdb ai" 2>/dev/null || true
+      su postgres -c "psql -c \"CREATE USER ai WITH PASSWORD 'ai';\" 2>/dev/null" || true
+      su postgres -c "psql -c \"GRANT ALL ON DATABASE ai TO ai;\" 2>/dev/null" || true
+      su postgres -c "psql -c \"ALTER USER ai WITH SUPERUSER;\" 2>/dev/null" || true
+      # Install pgvector extension
+      su postgres -c "psql -d ai -c 'CREATE EXTENSION IF NOT EXISTS vector;'" 2>/dev/null || true
+      echo "PostgreSQL initialized with pgvector extension."
+    else
+      echo "Starting PostgreSQL..."
+      su postgres -c "pg_ctl -D '$PGDATA' start -w -l /tmp/pg.log" 2>/dev/null || true
+    fi
+    # Wait for Postgres to be ready
+    until su postgres -c "pg_isready -q" 2>/dev/null; do sleep 1; done
+    echo "PostgreSQL is ready."
 
     # Install code-server (VS Code in the browser) if not already present
     if ! command -v code-server &>/dev/null; then
@@ -176,10 +205,16 @@ resource "coder_agent" "main" {
   # App environment variables — these are injected by the agent into
   # the startup_script's shell environment.
   env = {
-    DB_BACKEND      = "sqlite"
+    DB_BACKEND      = "postgres"
+    DB_HOST         = "localhost"
+    DB_PORT         = "5432"
+    DB_USER         = "ai"
+    DB_PASS         = "ai"
+    DB_DATABASE     = "ai"
     RUNTIME_ENV     = "dev"
     AGNO_DEBUG      = "True"
     DATA_DIR        = "/app/data"
+    PGDATA          = "/app/data/pgdata"
     AGENTOS_URL     = "http://localhost:8000"
     OPENAI_API_KEY  = var.openai_api_key
     OLLAMA_API_KEY  = var.ollama_api_key
@@ -261,10 +296,10 @@ resource "coder_metadata" "workspace_info" {
   }
   item {
     key   = "Database"
-    value = "SQLite (/app/data/agents.db)"
+    value = "PostgreSQL 16 + pgvector (localhost:5432)"
   }
   item {
-    key   = "Vector DB"
-    value = "ChromaDB (/app/data/chromadb)"
+    key   = "DB Data"
+    value = "/app/data/pgdata (persistent volume)"
   }
 }

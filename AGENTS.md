@@ -4,7 +4,7 @@ This file is the source of truth for any agent (Claude Code, Codex, others) work
 
 ## Project Overview
 
-A unified agent platform built on [Agno](https://docs.agno.com), shipped as a copy-pasteable starting point for students. Two reference agents demonstrate the two common shapes for supplying context to an agent. SQLite + ChromaDB handle persistence for sessions, memory, and knowledge (zero-server, file-based). Designed to run inside a Coder workspace — no external databases or Docker Compose needed.
+A unified agent platform built on [Agno](https://docs.agno.com), shipped as a copy-pasteable starting point for students. Two reference agents demonstrate the two common shapes for supplying context to an agent. PostgreSQL + pgvector handle persistence for sessions, memory, and knowledge. Designed to run inside a Coder workspace — Postgres runs in-container, no external databases or Docker Compose needed.
 
 ## Architecture
 
@@ -20,9 +20,8 @@ Teams:
 
 Shared:
 
-- SQLite for agent storage (sessions, memory, metrics, evals, knowledge, schedules).
-- ChromaDB for vector storage (RAG knowledge bases, hybrid search).
-- Both stored on a persistent Docker volume at `/app/data` — survives workspace stop/start.
+- PostgreSQL 16 + pgvector for agent storage (sessions, memory, metrics, evals, knowledge, schedules) and vector storage (RAG knowledge bases, hybrid search).
+- Postgres runs in-container (installed in the workspace image), data at `/app/data/pgdata` on a persistent Docker volume — survives workspace stop/start.
 - `app.settings.default_model()` returns `Ollama(id="glm-5.1:cloud")` — bump the model in one place.
 - OpenAI key used only for embeddings (`text-embedding-3-small`).
 - Scheduler enabled by default (`scheduler=True`).
@@ -162,7 +161,7 @@ Two patterns to copy from:
 
 ### Database
 
-The default backend is SQLite + ChromaDB (set `DB_BACKEND=sqlite` or leave unset). Both store data on the persistent volume at `/app/data` — no external database server needed. For production or multi-agent shared state, switch to Postgres + pgvector with `DB_BACKEND=postgres`.
+The default backend is PostgreSQL + pgvector (set `DB_BACKEND=postgres` or leave unset). Postgres runs in-container — installed in the workspace image, data at `/app/data/pgdata` on the persistent volume. For zero-server, file-based storage, switch to SQLite + ChromaDB with `DB_BACKEND=sqlite`.
 
 ```python
 # Plain agent — sessions, memory, agentic memory live here
@@ -174,7 +173,7 @@ from db import create_knowledge
 my_kb = create_knowledge("My Knowledge", "my_vectors")
 ```
 
-Knowledge bases use hybrid search (`SearchType.hybrid`) and `text-embedding-3-small` embeddings. With SQLite backend, vectors go into ChromaDB at `/app/data/chromadb`; document contents go into `<table_name>_contents` in SQLite. With Postgres backend, vectors use PgVector and contents use Postgres.
+Knowledge bases use hybrid search (`SearchType.hybrid`) and `text-embedding-3-small` embeddings. With Postgres backend, vectors use PgVector and document contents go into `<table_name>_contents`. With SQLite backend, vectors go into ChromaDB at `/app/data/chromadb` and contents into SQLite.
 
 ## Adding a new agent
 
@@ -211,15 +210,16 @@ In the Coder workspace, `OPENAI_API_KEY` and `OLLAMA_API_KEY` are pre-filled fro
 | `OPENAI_API_KEY` | yes | — | OpenAI key for embeddings (`text-embedding-3-small`). Pre-filled via `TF_VAR_openai_api_key` on the VPS. |
 | `OLLAMA_API_KEY` | yes | — | Ollama key for the default model (`glm-5.1:cloud`). Pre-filled via `TF_VAR_ollama_api_key` on the VPS. |
 | `OLLAMA_HOST` | no | `https://ollama.com` | Ollama endpoint. Set to Ollama Cloud so the CLI and IDE extensions use cloud models, not localhost. |
-| `DB_BACKEND` | no | `sqlite` | `sqlite` (default, zero-server) or `postgres` (external Postgres + pgvector). |
-| `DATA_DIR` | no | `data` | Where SQLite DB + ChromaDB files are stored. Coder sets this to `/app/data` (persistent volume). |
+| `DB_BACKEND` | no | `postgres` | `postgres` (default, in-container) or `sqlite` (zero-server fallback). |
+| `DATA_DIR` | no | `data` | Where Postgres data + other state is stored. Coder sets this to `/app/data` (persistent volume). |
+| `PGDATA` | no | `/app/data/pgdata` | Postgres data directory. On the persistent volume so data survives restarts. |
 | `RUNTIME_ENV` | no | `prd` | `dev` enables hot-reload and disables JWT. Coder sets this to `dev`. |
 | `JWT_VERIFICATION_KEY` | prd | — | Public key from os.agno.com. Required when `RUNTIME_ENV=prd` and `authorization=True`. |
 | `AGENTOS_URL` | no | `http://127.0.0.1:8000` | Scheduler base URL. |
 | `PARALLEL_API_KEY` | no | — | Authenticates the WebSearch Agent's Parallel SDK / MCP connection (raises rate ceiling). |
 | `SLACK_BOT_TOKEN` | no | — | Bot token. Set with signing secret to enable Slack interface. |
 | `SLACK_SIGNING_SECRET` | no | — | Signing secret. Both must be set for the interface to load. |
-| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASS` / `DB_DATABASE` | no | matches compose | Postgres connection (only used when `DB_BACKEND=postgres`). |
+| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASS` / `DB_DATABASE` | no | `localhost` / `5432` / `ai` / `ai` / `ai` | Postgres connection (only used when `DB_BACKEND=postgres`). Defaults match the in-container Postgres. |
 | `DB_DRIVER` | no | `postgresql+psycopg` | SQLAlchemy driver (only used when `DB_BACKEND=postgres`). |
 | `PORT` | no | `8000` | API server port. |
 | `AGNO_DEBUG` | no | `False` | If `True`, agno emits verbose debug logs. Coder sets this for dev. |

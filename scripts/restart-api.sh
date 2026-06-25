@@ -38,6 +38,15 @@ log() {
 # Must run from /app
 cd /app
 
+# Ensure PostgreSQL is running (in-container, data on persistent volume)
+export PGDATA=/app/data/pgdata
+if ! su postgres -c "pg_isready -q" 2>/dev/null; then
+    log "🔄 Starting PostgreSQL..."
+    su postgres -c "pg_ctl -D '$PGDATA' start -w -l /tmp/pg.log" 2>/dev/null || true
+    until su postgres -c "pg_isready -q" 2>/dev/null; do sleep 1; done
+    log "✅ PostgreSQL is ready."
+fi
+
 # Find the running uvicorn process (match the app module, not this script)
 UVICORN_PID=$(pgrep -f "uvicorn app.main:app" || true)
 
