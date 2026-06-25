@@ -169,12 +169,14 @@ resource "coder_agent" "main" {
       # Create the course database and user.
       # Base64-encode the SQL to avoid ALL shell quoting issues inside
       # the Terraform heredoc. Decode at runtime, write to file, execute.
+      # Use PGUSER=postgres to override the PGUSER=ai env var that psql
+      # would otherwise inherit.
       echo "Q1JFQVRFIFVTRVIgYWkgV0lUSCBQQVNTV09SRCAnYWknIFNVUEVSVVNFUjsKQ1JFQVRFIERBVEFCQVNFIGFpIE9XTkVSIGFpOwo=" | base64 -d > /tmp/init.sql
       chown postgres:postgres /tmp/init.sql
-      su postgres -c '/usr/lib/postgresql/16/bin/psql -f /tmp/init.sql -v ON_ERROR_STOP=1' 2>&1
+      su postgres -c 'PGUSER=postgres /usr/lib/postgresql/16/bin/psql -f /tmp/init.sql -v ON_ERROR_STOP=1' 2>&1
       echo "Q1JFQVRFIEVYVEVOU0lPTiBJRiBOT1QgRVhJU1RTIHZlY3RvcjsK" | base64 -d > /tmp/init.sql
       chown postgres:postgres /tmp/init.sql
-      su postgres -c '/usr/lib/postgresql/16/bin/psql -d ai -f /tmp/init.sql -v ON_ERROR_STOP=1' 2>&1
+      su postgres -c 'PGUSER=postgres /usr/lib/postgresql/16/bin/psql -d ai -f /tmp/init.sql -v ON_ERROR_STOP=1' 2>&1
       rm -f /tmp/init.sql
       echo "PostgreSQL initialized with pgvector extension."
     else
