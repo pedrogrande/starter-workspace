@@ -43,10 +43,10 @@ cd /app
 
 # Ensure PostgreSQL is running (in-container, data on persistent volume)
 export PGDATA=/app/data/pgdata
-if ! su postgres -c '/usr/lib/postgresql/16/bin/pg_isready -q' 2>/dev/null; then
+if ! su postgres -c 'PGUSER=postgres /usr/lib/postgresql/16/bin/pg_isready -q' 2>/dev/null; then
     log "🔄 Starting PostgreSQL..."
     su postgres -c '/usr/lib/postgresql/16/bin/pg_ctl -D /app/data/pgdata start -w -l /tmp/pg.log' 2>/dev/null || true
-    until su postgres -c "pg_isready -q" 2>/dev/null; do sleep 1; done
+    until su postgres -c 'PGUSER=postgres /usr/lib/postgresql/16/bin/pg_isready -q' 2>/dev/null; do sleep 1; done
     log "✅ PostgreSQL is ready."
 fi
 
