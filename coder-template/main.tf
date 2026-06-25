@@ -124,9 +124,10 @@ resource "coder_agent" "main" {
   startup_script = <<-EOT
     set -e
 
-    # Add PostgreSQL server binaries to PATH (initdb, pg_ctl, postgres, etc.)
-    # They live in /usr/lib/postgresql/16/bin/ which isn't on the default PATH.
-    export PATH="/usr/lib/postgresql/16/bin:$PATH"
+    # PostgreSQL server binaries live in /usr/lib/postgresql/16/bin/ (not on PATH).
+    # Use full paths for all su postgres -c commands since su starts a new shell
+    # that doesn't inherit exported PATH.
+    PG_BIN="/usr/lib/postgresql/16/bin"
 
     # Clone the repo if it doesn't exist
     if [ ! -d /app/.git ]; then
@@ -152,30 +153,30 @@ resource "coder_agent" "main" {
 
     # Start PostgreSQL (in-container, data on persistent volume)
     export PGDATA=/app/data/pgdata
-    if [ ! -d "$PGDATA" ]; then
+    if [ ! -d "$PGDATA" ] || [ ! -f "$PGDATA/postgresql.conf" ]; then
       echo "Initializing PostgreSQL database..."
       mkdir -p "$PGDATA"
       chown postgres:postgres "$PGDATA"
       chmod 700 "$PGDATA"
-      su postgres -c "initdb -D '$PGDATA' --auth=trust" 2>&1 | tail -5
+      su postgres -c "$PG_BIN/initdb -D '$PGDATA' --auth=trust" 2>&1 | tail -5
       # Configure Postgres to listen on localhost
       echo "listen_addresses = 'localhost'" >> "$PGDATA/postgresql.conf"
       echo "unix_socket_directories = '/tmp'" >> "$PGDATA/postgresql.conf"
-      su postgres -c "pg_ctl -D '$PGDATA' start -w -l /tmp/pg.log"
+      su postgres -c "$PG_BIN/pg_ctl -D '$PGDATA' start -w -l /tmp/pg.log"
       # Create the course database and user
-      su postgres -c "createdb ai" 2>/dev/null || true
-      su postgres -c "psql -c \"CREATE USER ai WITH PASSWORD 'ai';\" 2>/dev/null" || true
-      su postgres -c "psql -c \"GRANT ALL ON DATABASE ai TO ai;\" 2>/dev/null" || true
-      su postgres -c "psql -c \"ALTER USER ai WITH SUPERUSER;\" 2>/dev/null" || true
+      su postgres -c "$PG_BIN/createdb ai" 2>/dev/null || true
+      su postgres -c "$PG_BIN/psql -c \"CREATE USER ai WITH PASSWORD 'ai';\"" 2>/dev/null || true
+      su postgres -c "$PG_BIN/psql -c \"GRANT ALL ON DATABASE ai TO ai;\"" 2>/dev/null || true
+      su postgres -c "$PG_BIN/psql -c \"ALTER USER ai WITH SUPERUSER;\"" 2>/dev/null || true
       # Install pgvector extension
-      su postgres -c "psql -d ai -c 'CREATE EXTENSION IF NOT EXISTS vector;'" 2>/dev/null || true
+      su postgres -c "$PG_BIN/psql -d ai -c 'CREATE EXTENSION IF NOT EXISTS vector;'" 2>/dev/null || true
       echo "PostgreSQL initialized with pgvector extension."
     else
       echo "Starting PostgreSQL..."
-      su postgres -c "pg_ctl -D '$PGDATA' start -w -l /tmp/pg.log" 2>/dev/null || true
+      su postgres -c "$PG_BIN/pg_ctl -D '$PGDATA' start -w -l /tmp/pg.log" 2>/dev/null || true
     fi
     # Wait for Postgres to be ready
-    until su postgres -c "pg_isready -q" 2>/dev/null; do sleep 1; done
+    until su postgres -c "$PG_BIN/pg_isready -q" 2>/dev/null; do sleep 1; done
     echo "PostgreSQL is ready."
 
     # Install code-server (VS Code in the browser) if not already present
