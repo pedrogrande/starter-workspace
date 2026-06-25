@@ -166,17 +166,11 @@ resource "coder_agent" "main" {
       echo "listen_addresses = 'localhost'" >> "$PGDATA/postgresql.conf"
       echo "unix_socket_directories = '/tmp'" >> "$PGDATA/postgresql.conf"
       su postgres -c '/usr/lib/postgresql/16/bin/pg_ctl -D /app/data/pgdata start -w -l /tmp/pg.log'
-      # Create the course database and user via a SQL script file.
-      # This avoids the quoting nightmare of nested su -c '...' -c "..." layers.
-      cat > /tmp/init.sql << 'SQLEOF'
-CREATE USER ai WITH PASSWORD 'ai' SUPERUSER;
-CREATE DATABASE ai OWNER ai;
-\c ai
-CREATE EXTENSION IF NOT EXISTS vector;
-SQLEOF
-      chown postgres:postgres /tmp/init.sql
-      su postgres -c '/usr/lib/postgresql/16/bin/psql -f /tmp/init.sql' 2>&1
-      rm -f /tmp/init.sql
+      # Create the course database and user.
+      # We use echo | psql instead of a heredoc to avoid nested heredoc
+      # issues with Terraform's own heredoc parsing.
+      echo "CREATE USER ai WITH PASSWORD 'ai' SUPERUSER; CREATE DATABASE ai OWNER ai;" | su postgres -c '/usr/lib/postgresql/16/bin/psql -v ON_ERROR_STOP=1' 2>&1
+      echo "CREATE EXTENSION IF NOT EXISTS vector;" | su postgres -c '/usr/lib/postgresql/16/bin/psql -d ai -v ON_ERROR_STOP=1' 2>&1
       echo "PostgreSQL initialized with pgvector extension."
     else
       echo "Starting PostgreSQL..."
