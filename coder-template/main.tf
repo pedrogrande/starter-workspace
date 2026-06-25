@@ -166,13 +166,17 @@ resource "coder_agent" "main" {
       echo "listen_addresses = 'localhost'" >> "$PGDATA/postgresql.conf"
       echo "unix_socket_directories = '/tmp'" >> "$PGDATA/postgresql.conf"
       su postgres -c '/usr/lib/postgresql/16/bin/pg_ctl -D /app/data/pgdata start -w -l /tmp/pg.log'
-      # Create the course database and user
-      su postgres -c '/usr/lib/postgresql/16/bin/createdb ai' 2>/dev/null || true
-      su postgres -c '/usr/lib/postgresql/16/bin/psql -c "CREATE USER ai WITH PASSWORD '"'"'ai'"'"';"' 2>/dev/null || true
-      su postgres -c '/usr/lib/postgresql/16/bin/psql -c "GRANT ALL ON DATABASE ai TO ai;"' 2>/dev/null || true
-      su postgres -c '/usr/lib/postgresql/16/bin/psql -c "ALTER USER ai WITH SUPERUSER;"' 2>/dev/null || true
-      # Install pgvector extension
-      su postgres -c '/usr/lib/postgresql/16/bin/psql -d ai -c "CREATE EXTENSION IF NOT EXISTS vector;"' 2>/dev/null || true
+      # Create the course database and user via a SQL script file.
+      # This avoids the quoting nightmare of nested su -c '...' -c "..." layers.
+      cat > /tmp/init.sql << 'SQLEOF'
+CREATE USER ai WITH PASSWORD 'ai' SUPERUSER;
+CREATE DATABASE ai OWNER ai;
+\c ai
+CREATE EXTENSION IF NOT EXISTS vector;
+SQLEOF
+      chown postgres:postgres /tmp/init.sql
+      su postgres -c '/usr/lib/postgresql/16/bin/psql -f /tmp/init.sql' 2>&1
+      rm -f /tmp/init.sql
       echo "PostgreSQL initialized with pgvector extension."
     else
       echo "Starting PostgreSQL..."
