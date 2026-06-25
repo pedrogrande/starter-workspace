@@ -152,32 +152,34 @@ resource "coder_agent" "main" {
     chmod +x /app/scripts/entrypoint.sh 2>/dev/null || true
 
     # Start PostgreSQL (in-container, data on persistent volume)
+    # PostgreSQL binaries are at /usr/lib/postgresql/16/bin/ — not on PATH.
+    # We use full absolute paths in every su postgres -c command because
+    # su starts a new shell that doesn't inherit the parent's PATH.
     export PGDATA=/app/data/pgdata
-    PG_BIN="/usr/lib/postgresql/16/bin"
     if [ ! -d "$PGDATA" ] || [ ! -f "$PGDATA/postgresql.conf" ]; then
       echo "Initializing PostgreSQL database..."
       mkdir -p "$PGDATA"
       chown postgres:postgres "$PGDATA"
       chmod 700 "$PGDATA"
-      su postgres -c "PATH=$PG_BIN:\$PATH initdb -D '$PGDATA' --auth=trust" 2>&1 | tail -5
+      su postgres -c '/usr/lib/postgresql/16/bin/initdb -D /app/data/pgdata --auth=trust' 2>&1 | tail -5
       # Configure Postgres to listen on localhost
       echo "listen_addresses = 'localhost'" >> "$PGDATA/postgresql.conf"
       echo "unix_socket_directories = '/tmp'" >> "$PGDATA/postgresql.conf"
-      su postgres -c "PATH=$PG_BIN:\$PATH pg_ctl -D '$PGDATA' start -w -l /tmp/pg.log"
+      su postgres -c '/usr/lib/postgresql/16/bin/pg_ctl -D /app/data/pgdata start -w -l /tmp/pg.log'
       # Create the course database and user
-      su postgres -c "PATH=$PG_BIN:\$PATH createdb ai" 2>/dev/null || true
-      su postgres -c "PATH=$PG_BIN:\$PATH psql -c \"CREATE USER ai WITH PASSWORD 'ai';\"" 2>/dev/null || true
-      su postgres -c "PATH=$PG_BIN:\$PATH psql -c \"GRANT ALL ON DATABASE ai TO ai;\"" 2>/dev/null || true
-      su postgres -c "PATH=$PG_BIN:\$PATH psql -c \"ALTER USER ai WITH SUPERUSER;\"" 2>/dev/null || true
+      su postgres -c '/usr/lib/postgresql/16/bin/createdb ai' 2>/dev/null || true
+      su postgres -c '/usr/lib/postgresql/16/bin/psql -c "CREATE USER ai WITH PASSWORD '"'"'ai'"'"';"' 2>/dev/null || true
+      su postgres -c '/usr/lib/postgresql/16/bin/psql -c "GRANT ALL ON DATABASE ai TO ai;"' 2>/dev/null || true
+      su postgres -c '/usr/lib/postgresql/16/bin/psql -c "ALTER USER ai WITH SUPERUSER;"' 2>/dev/null || true
       # Install pgvector extension
-      su postgres -c "PATH=$PG_BIN:\$PATH psql -d ai -c 'CREATE EXTENSION IF NOT EXISTS vector;'" 2>/dev/null || true
+      su postgres -c '/usr/lib/postgresql/16/bin/psql -d ai -c "CREATE EXTENSION IF NOT EXISTS vector;"' 2>/dev/null || true
       echo "PostgreSQL initialized with pgvector extension."
     else
       echo "Starting PostgreSQL..."
-      su postgres -c "PATH=$PG_BIN:\$PATH pg_ctl -D '$PGDATA' start -w -l /tmp/pg.log" 2>/dev/null || true
+      su postgres -c '/usr/lib/postgresql/16/bin/pg_ctl -D /app/data/pgdata start -w -l /tmp/pg.log' 2>/dev/null || true
     fi
     # Wait for Postgres to be ready
-    until su postgres -c "PATH=$PG_BIN:\$PATH pg_isready -q" 2>/dev/null; do sleep 1; done
+    until su postgres -c '/usr/lib/postgresql/16/bin/pg_isready -q' 2>/dev/null; do sleep 1; done
     echo "PostgreSQL is ready."
 
     # Install code-server (VS Code in the browser) if not already present
