@@ -39,14 +39,14 @@ log() {
 cd /app
 
 # PostgreSQL server binaries live in /usr/lib/postgresql/16/bin/ (not on PATH).
-# Use full paths for su postgres -c commands since su starts a new shell.
+# Set PATH inside su postgres -c since su starts a new shell.
 PG_BIN="/usr/lib/postgresql/16/bin"
 
 # Ensure PostgreSQL is running (in-container, data on persistent volume)
 export PGDATA=/app/data/pgdata
-if ! su postgres -c "$PG_BIN/pg_isready -q" 2>/dev/null; then
+if ! su postgres -c "PATH=$PG_BIN:\$PATH pg_isready -q" 2>/dev/null; then
     log "🔄 Starting PostgreSQL..."
-    su postgres -c "$PG_BIN/pg_ctl -D '$PGDATA' start -w -l /tmp/pg.log" 2>/dev/null || true
+    su postgres -c "PATH=$PG_BIN:\$PATH pg_ctl -D '$PGDATA' start -w -l /tmp/pg.log" 2>/dev/null || true
     until su postgres -c "pg_isready -q" 2>/dev/null; do sleep 1; done
     log "✅ PostgreSQL is ready."
 fi
