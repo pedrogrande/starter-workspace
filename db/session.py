@@ -19,6 +19,7 @@ vector database.
 
 from os import getenv
 from pathlib import Path
+from functools import lru_cache
 
 from agno.db.postgres import PostgresDb
 from agno.db.sqlite import SqliteDb
@@ -43,8 +44,14 @@ SQLITE_DB_FILE = str(DATA_DIR / "agents.db")
 CHROMA_DB_PATH = str(DATA_DIR / "chromadb")
 
 
+@lru_cache(maxsize=None)
 def get_db(contents_table: str | None = None) -> PostgresDb | SqliteDb:
     """Create a database instance for the active backend.
+
+    Cached — returns the same instance for the same ``contents_table``.
+    This avoids Agno's "multiple distinct databases share id" warning,
+    which silently drops sessions created through different instances that
+    happen to share the same database id.
 
     Pass ``contents_table`` only when this database is the ``contents_db``
     of a Knowledge base — it tells agno where to persist document contents.
