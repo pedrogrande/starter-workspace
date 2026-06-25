@@ -8,12 +8,16 @@ from os import getenv
 from pathlib import Path
 
 from agno.os import AgentOS
+from agno.registry import Registry
+from agno.tools.mcp import MCPTools
+from agno.tools.parallel import ParallelTools
 from agno.utils.log import log_error, log_info
 
 from agents.agno_support import agno_support_agent
 from agents.code_search import code_search
 from agents.web_search import web_search
-from db import get_db
+from app.settings import default_model
+from db import create_knowledge, get_db
 from teams.engineering_team import engineering_team
 
 # ---------------------------------------------------------------------------
@@ -63,6 +67,55 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
 
 
 # ---------------------------------------------------------------------------
+# Studio Registry
+#
+# The Registry exposes tools, models, databases, and knowledge bases to the
+# AgentOS Studio (os.agno.com). Students can build agents visually in the
+# Studio by selecting from these registered components — no code needed.
+#
+# When a student creates an agent in the Studio, they pick a model, tools,
+# and optionally a knowledge base from the Registry. The Studio serializes
+# the agent definition and sends it to AgentOS, which instantiates it at
+# runtime using the registered components.
+#
+# To add a new tool or model to the Studio, register it here. The component
+# appears in the Studio's component picker immediately after restart.
+# ---------------------------------------------------------------------------
+
+# Tools available in the Studio — students can add these to their agents
+studio_tools = []
+if getenv("PARALLEL_API_KEY"):
+    studio_tools.append(ParallelTools())
+else:
+    studio_tools.append(
+        MCPTools(url="https://search.parallel.ai/mcp", transport="streamable-http")
+    )
+# Agno docs MCP — lets Studio-built agents search Agno documentation
+studio_tools.append(
+    MCPTools(transport="streamable-http", url="https://docs.agno.com/mcp")
+)
+
+# Models available in the Studio
+studio_models = [default_model()]
+
+# Databases available in the Studio
+studio_dbs = [get_db()]
+
+# Pre-built knowledge bases students can attach to their agents
+studio_knowledge = [
+    create_knowledge("Studio Knowledge", "studio_knowledge"),
+]
+
+registry = Registry(
+    name="Course Registry",
+    tools=studio_tools,
+    models=studio_models,
+    dbs=studio_dbs,
+    knowledge=studio_knowledge,
+)
+
+
+# ---------------------------------------------------------------------------
 # Create AgentOS
 # ---------------------------------------------------------------------------
 agent_os = AgentOS(
@@ -76,6 +129,7 @@ agent_os = AgentOS(
     agents=[web_search, code_search, agno_support_agent],
     teams=[engineering_team],
     interfaces=interfaces,
+    registry=registry,
     config=str(Path(__file__).parent / "config.yaml"),
 )
 app = agent_os.get_app()
